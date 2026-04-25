@@ -87,6 +87,7 @@ model YoutubeVideo {
   views         Int      @default(0)
   url           String
   isNew         Boolean  @default(false)
+  isLive        Boolean  @default(false)
   publishedAt   DateTime @default(now())
   fetchedAt     DateTime @default(now())
   createdAt     DateTime @default(now())
@@ -95,6 +96,7 @@ model YoutubeVideo {
   @@index([publishedAt])
   @@index([channelId])
   @@index([channelHandle])
+  @@index([isLive, fetchedAt])
 }
 
 model AiNewsItem {

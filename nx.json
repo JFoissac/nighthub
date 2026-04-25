@@ -38,5 +38,11 @@
       "unitTestRunner": "vitest-angular"
     }
   },
-  "defaultProject": "nighthub"
+  "defaultProject": "nighthub",
+  "workspaceLayout": {
+    "appsDir": ".",
+    "libsDir": "."
+  },
+  "defaultBase": "main",
+  "plugins": []
 }

@@ -29,6 +29,10 @@ export const config = {
     apiKey: process.env.OPENWEATHERMAP_API_KEY || '',
   },
 
+  piped: {
+    instanceUrl: process.env.PIPED_INSTANCE_URL || '',
+  },
+
   database: {
     url: process.env.DATABASE_URL || 'file:./dev.db',
   },

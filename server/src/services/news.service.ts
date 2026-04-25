@@ -255,6 +255,53 @@ export class NewsService {
       return [];
     }
   }
+
+  /** Validate that a URL is a valid RSS/Atom feed */
+  async validateFeedUrl(url: string): Promise<boolean> {
+    try {
+      const res = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(5000) });
+      if (!res.ok) return false;
+      const text = await res.text();
+      const first2000 = text.slice(0, 2000);
+      return first2000.includes('<rss') || first2000.includes('<feed') || first2000.includes('<channel');
+    } catch {
+      return false;
+    }
+  }
+
+  /** Detect RSS/Atom feed for a given site URL */
+  async detectFeed(siteUrl: string): Promise<string | null> {
+    try {
+      // 1. Fetch the page and look for <link type="application/rss+xml">
+      const res = await fetch(siteUrl, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        const html = await res.text();
+        const match = html.match(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]+href=["']([^"']+)["']/i)
+          || html.match(/<link[^>]+href=["']([^"']+)["'][^>]+type=["']application\/(?:rss|atom)\+xml["']/i);
+        if (match) {
+          const href = match[1];
+          const resolved = href.startsWith('http') ? href : new URL(href, siteUrl).toString();
+          if (await this.validateFeedUrl(resolved)) return resolved;
+        }
+      }
+    } catch {
+      // fall through to probing
+    }
+
+    // 2. Probe common paths
+    const origin = new URL(siteUrl).origin;
+    const candidates = ['/feed', '/rss', '/rss.xml', '/feed.xml', '/atom.xml', '/feed/rss', '/blog/feed'];
+    for (const path of candidates) {
+      const candidate = `${origin}${path}`;
+      if (await this.validateFeedUrl(candidate)) return candidate;
+    }
+
+    return null;
+  }
 }
 
-export const newsService = new NewsService();
+export function createNewsService(): NewsService {
+  return new NewsService();
+}
+
+export const newsService = createNewsService();

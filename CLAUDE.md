@@ -1,12 +1,24 @@
-# CLAUDE.md
+# Nighthub Project Configuration
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This is an Nx monorepo. Always use `pnpm nx` to run tasks.
 
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+- For navigating/exploring the workspace, invoke the `nx-workspace` skill first
+- When running tasks (build, lint, test, e2e, etc.), always prefer running through `nx` (`nx run`, `nx run-many`, `nx affected`) instead of using the underlying tooling directly
+- Prefix nx commands with the workspace's package manager (e.g., `pnpm nx build`, `npm exec nx test`)
+- For scaffolding tasks (creating apps, libs, project structure, setup), ALWAYS invoke the `nx-generate` skill FIRST before exploring or calling MCP tools
+- You have access to the Nx MCP server and its tools
+- For Nx plugin best practices, check `node_modules/@nx/<plugin>/PLUGIN.md`
+- NEVER guess CLI flags - always check nx_docs or `--help` first when unsure
+- USE nx_docs for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
+- DON'T USE nx_docs for: basic generator syntax, standard commands, things you already know
+
+---
+
+## Behavioral Guidelines to Reduce Common LLM Coding Mistakes
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-## 1. Think Before Coding
+### 1. Think Before Coding
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
@@ -16,7 +28,7 @@ Before implementing:
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
 
-## 2. Simplicity First
+### 2. Simplicity First
 
 **Minimum code that solves the problem. Nothing speculative.**
 
@@ -28,7 +40,7 @@ Before implementing:
 
 Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-## 3. Surgical Changes
+### 3. Surgical Changes
 
 **Touch only what you must. Clean up only your own mess.**
 
@@ -44,79 +56,23 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
-## 4. Goal-Driven Execution
+### 4. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 
 Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
+- "Add validation" -> "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" -> "Write a test that reproduces it, then make it pass"
+- "Refactor X" -> "Ensure tests pass before and after"
 
 For multi-step tasks, state a brief plan:
 ```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
+1. [Step] -> verify: [check]
+2. [Step] -> verify: [check]
+3. [Step] -> verify: [check]
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
----
-
-## Project Structure & Contribution
-
-This repository distributes the Karpathy guidelines in **three formats** for different use cases. When updating the guidelines, keep all three in sync:
-
-### The Three Formats
-
-1. **`CLAUDE.md`** (this file)
-   - Per-project distribution for Claude Code users
-   - Intended to be copied into other repositories
-   - Contains the full four principles
-
-2. **`.cursor/rules/karpathy-guidelines.mdc`**
-   - Cursor-specific rules format
-   - Included directly in projects that use Cursor
-   - Same content, Cursor markdown syntax
-
-3. **`skills/karpathy-guidelines/SKILL.md`**
-   - Claude Code skill format (distributed via marketplace)
-   - Published as the `karpathy-guidelines` plugin
-   - Same principles, skill metadata header
-
-### How These Files Relate
-
-- Core principles are **identical** across all three (only syntax differs)
-- Changes to principles must be applied to **all three files**
-- See [`CURSOR.md`](CURSOR.md) for details on using each format
-- See [`README.md`](README.md) for installation instructions
-
-### Contribution Guidelines
-
-When modifying the four principles:
-
-1. **Update the source concept first** — decide on the change
-2. **Apply to all three files** — update CLAUDE.md, .cursor/rules file, and SKILL.md
-3. **Keep sync comments** — see CURSOR.md's "For contributors" section for sync checklist
-4. **Test the formats** — verify the content reads correctly in each context:
-   - CLAUDE.md: plain markdown
-   - Cursor rule: renders in Cursor settings
-   - Skill: displays when invoked via Claude Code plugin
-
-### File Purposes
-
-- **`README.md`** — Project overview, installation, and key insights
-- **`EXAMPLES.md`** — Real-world code examples demonstrating each principle
-- **`CURSOR.md`** — Instructions for Cursor users and format sync details
-- **`.claude-plugin/`** — Plugin marketplace metadata (auto-generated from SKILL.md)
-- **`README.zh.md`** — Simplified Chinese translation of README
-
-### What Not to Change
-
-- The four core principle **names** (Think, Simplicity, Surgical, Goal-Driven) — these are referenced in docs
-- The **structure** of CLAUDE.md (it's designed for easy copying)
-- The **principle content** without syncing across all three formats
 
 ---
 

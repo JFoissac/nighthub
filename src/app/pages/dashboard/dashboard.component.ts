@@ -11,6 +11,7 @@ import { AiNewsCardComponent } from '../../components/ai-news/ai-news-card.compo
 import { TrumpCardComponent } from '../../components/trump/trump-card.component';
 import { SettingsModalComponent } from '../../components/settings-modal/settings-modal.component';
 import { WeatherPopupComponent } from '../../components/weather/weather-popup.component';
+import { RssDetectModalComponent } from '../../components/rss-detect-modal/rss-detect-modal.component';
 import { ApiService, DashboardData } from '../../services/api.service';
 import { TwitchStream, YoutubeVideo } from '../../models';
 
@@ -30,6 +31,7 @@ import { TwitchStream, YoutubeVideo } from '../../models';
     TrumpCardComponent,
     SettingsModalComponent,
     WeatherPopupComponent,
+    RssDetectModalComponent,
   ],
   template: `
     <div class="min-h-screen bg-background">
@@ -75,6 +77,13 @@ import { TwitchStream, YoutubeVideo } from '../../models';
         ></app-video-player-panel>
       }
 
+      @if (showRssDetect()) {
+        <app-rss-detect-modal
+          (close)="showRssDetect.set(false)"
+          (feedAdded)="onFeedAdded($event)"
+        ></app-rss-detect-modal>
+      }
+
       <!-- Push-panel flex layout: main shrinks when stream panel is open -->
       <div class="flex pt-12 min-h-screen">
         <main class="flex-1 min-w-0">
@@ -109,8 +118,8 @@ import { TwitchStream, YoutubeVideo } from '../../models';
                 }
                 @if (!dashboardData()?.tweets?.length) {
                   <div class="p-6 text-center">
-                    <p class="font-label-caps text-[10px] text-text-muted mb-2">NO FEEDS CONFIGURED</p>
-                    <button (click)="showSettings.set(true)" class="font-label-caps text-[10px] text-primary underline">CONFIGURE</button>
+                    <p class="font-label-caps text-[10px] text-text-muted mb-2">SERVICE UNAVAILABLE</p>
+                    <p class="text-[10px] text-text-muted/60">X / Twitter feed is temporarily disabled.</p>
                   </div>
                 }
               </div>
@@ -124,9 +133,16 @@ import { TwitchStream, YoutubeVideo } from '../../models';
                   <span class="font-label-caps text-[11px] tracking-widest text-on-surface-variant">YOUTUBE RECAPS</span>
                 </div>
               </div>
-              <div class="flex-1 p-4 space-y-4 overflow-y-auto" style="max-height: 380px">
+               <div class="flex-1 p-4 space-y-4 overflow-y-auto" style="max-height: 380px" id="video-scroll-container">
                 @for (video of dashboardData()?.videos || []; track video.id || $index) {
                   <app-video-card [video]="video" (select)="selectedVideo.set($event)"></app-video-card>
+                }
+                <!-- Lazy loading sentinel -->
+                <div id="video-scroll-sentinel" class="h-1"></div>
+                @if (isLoadingMoreVideos()) {
+                  <div class="text-center py-2">
+                    <span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING MORE...</span>
+                  </div>
                 }
                 @if (!dashboardData()?.videos?.length) {
                   <div class="text-center py-6">
@@ -143,7 +159,7 @@ import { TwitchStream, YoutubeVideo } from '../../models';
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-2">
                 <svg class="w-4 h-4 text-secondary" viewBox="0 0 24 24" fill="currentColor"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>
-                <span class="font-label-caps text-[11px] tracking-widest text-on-surface-variant">TWITCH LIVE STREAMS</span>
+                <span class="font-label-caps text-[11px] tracking-widest text-on-surface-variant">LIVE STREAMS</span>
               </div>
             </div>
             <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
@@ -166,7 +182,18 @@ import { TwitchStream, YoutubeVideo } from '../../models';
             <section class="neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 150ms">
               <div class="px-4 py-3 border-b border-[#1E1E2E] flex items-center justify-between bg-[#131318]/40 flex-shrink-0">
                 <span class="font-label-caps text-[11px] tracking-widest text-on-surface-variant">AI BLOG</span>
-                <span class="font-label-caps text-[9px] text-text-muted">ANTHROPIC · OPENAI · KIMI · RSS</span>
+                <div class="flex items-center gap-2">
+                  <span class="font-label-caps text-[9px] text-text-muted">ANTHROPIC · OPENAI · KIMI · RSS</span>
+                  <button
+                    (click)="showRssDetect.set(true)"
+                    class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors"
+                    title="Ajouter un flux RSS"
+                  >
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
               <div class="flex-1 overflow-y-auto" style="max-height: 500px">
                 @for (item of dashboardData()?.news || []; track item.id || $index) {
@@ -224,12 +251,20 @@ export class DashboardComponent implements OnInit {
   loadingStatus = signal('LOADING DASHBOARD...');
   showSettings = signal(false);
   showWeather = signal(false);
+  showRssDetect = signal(false);
   selectedStream = signal<TwitchStream | null>(null);
   selectedVideo = signal<YoutubeVideo | null>(null);   // popup
   panelVideo = signal<YoutubeVideo | null>(null);       // side panel
 
+  // Lazy loading videos
+  videoLimit = signal(20);
+  readonly maxVideoLimit = 100;
+  isLoadingMoreVideos = signal(false);
+  private videoObserver?: IntersectionObserver;
+
   @HostListener('document:keydown.escape')
   onEscape() {
+    if (this.showRssDetect()) { this.showRssDetect.set(false); return; }
     if (this.showWeather()) { this.showWeather.set(false); return; }
     if (this.selectedVideo()) { this.selectedVideo.set(null); return; }
     if (this.panelVideo()) { this.panelVideo.set(null); return; }
@@ -238,6 +273,45 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit() {
     this.loadDashboard();
+    this.initVideoLazyLoading();
+  }
+
+  private initVideoLazyLoading() {
+    // Delay to ensure DOM is ready
+    setTimeout(() => {
+      const sentinel = document.getElementById('video-scroll-sentinel');
+      if (!sentinel) return;
+
+      this.videoObserver = new IntersectionObserver((entries) => {
+        const entry = entries[0];
+        if (entry.isIntersecting && !this.isLoadingMoreVideos() && this.videoLimit() < this.maxVideoLimit) {
+          this.loadMoreVideos();
+        }
+      }, { root: sentinel.parentElement!, rootMargin: '0px 0px 200px 0px' });
+
+      this.videoObserver.observe(sentinel);
+    }, 1000);
+  }
+
+  loadMoreVideos() {
+    const currentLimit = this.videoLimit();
+    const nextLimit = Math.min(currentLimit + 20, this.maxVideoLimit);
+    if (nextLimit === currentLimit) return;
+
+    this.isLoadingMoreVideos.set(true);
+    this.apiService.getVideos(nextLimit).subscribe({
+      next: (videos) => {
+        const data = this.dashboardData();
+        if (data) {
+          this.dashboardData.set({ ...data, videos });
+        }
+        this.videoLimit.set(nextLimit);
+        this.isLoadingMoreVideos.set(false);
+      },
+      error: () => {
+        this.isLoadingMoreVideos.set(false);
+      }
+    });
   }
 
   loadDashboard() {
@@ -294,7 +368,19 @@ export class DashboardComponent implements OnInit {
   }
 
   onSettingsSaved() {
-    // Reload dashboard after settings change
     this.loadDashboard();
+  }
+
+  onFeedAdded(feedUrl: string) {
+    this.showRssDetect.set(false);
+    this.apiService.getPreferences().subscribe({
+      next: (prefs) => {
+        const existing = (prefs.customRssFeeds || '').trim();
+        const updated = existing ? `${existing}\n${feedUrl}` : feedUrl;
+        this.apiService.savePreferences({ customRssFeeds: updated }).subscribe({
+          next: () => this.apiService.refreshNews().subscribe(),
+        });
+      },
+    });
   }
 }

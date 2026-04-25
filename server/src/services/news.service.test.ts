@@ -11,18 +11,20 @@ vi.mock('../db/prisma.client', () => ({
 }));
 
 vi.mock('rss-parser', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    parseURL: vi.fn().mockResolvedValue({
-      items: [
-        {
-          title: 'OpenAI releases GPT-5',
-          link: 'https://openai.com/news/gpt-5',
-          contentSnippet: 'GPT-5 is here with incredible capabilities.',
-          pubDate: new Date().toISOString(),
-        },
-      ],
-    }),
-  })),
+  default: function() {
+    return {
+      parseURL: vi.fn().mockResolvedValue({
+        items: [
+          {
+            title: 'OpenAI releases GPT-5',
+            link: 'https://openai.com/news/gpt-5',
+            contentSnippet: 'GPT-5 is here with incredible capabilities.',
+            pubDate: new Date().toISOString(),
+          },
+        ],
+      }),
+    };
+  } as any,
 }));
 
 import { NewsService } from './news.service';
@@ -149,15 +151,122 @@ describe('NewsService', () => {
     });
   });
 
-  describe('isRecent utility', () => {
-    it('marks items published within 72h as recent (via fetchAiNews output)', async () => {
+  describe('validateFeedUrl', () => {
+    it('returns true for valid RSS feed content', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<?xml version="1.0"?><rss version="2.0"><channel><title>Test</title></channel></rss>'),
+      });
+      const result = await service.validateFeedUrl('https://example.com/feed.xml');
+      expect(result).toBe(true);
+    });
+
+    it('returns true for Atom feed content', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<feed xmlns="http://www.w3.org/2005/Atom"><title>Test</title></feed>'),
+      });
+      const result = await service.validateFeedUrl('https://example.com/atom.xml');
+      expect(result).toBe(true);
+    });
+
+    it('returns false for HTML content', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<html><head><title>Test</title></head><body></body></html>'),
+      });
+      const result = await service.validateFeedUrl('https://example.com');
+      expect(result).toBe(false);
+    });
+
+    it('returns false when fetch fails', async () => {
       (global.fetch as any).mockRejectedValue(new Error('network'));
-      const news = await service.fetchAiNews();
-      const openai = news.find(n => n.source === 'openai');
-      if (openai) {
-        // The mocked pubDate is new Date().toISOString() so it should be recent
-        expect(openai.isNew).toBe(true);
-      }
+      const result = await service.validateFeedUrl('https://example.com');
+      expect(result).toBe(false);
+    });
+
+    it('returns false for non-ok response', async () => {
+      (global.fetch as any).mockResolvedValue({ ok: false, text: () => Promise.resolve('') });
+      const result = await service.validateFeedUrl('https://example.com');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('detectFeed', () => {
+    it('discovers RSS link tag in HTML head', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(`
+          <html><head>
+          <link rel="alternate" type="application/rss+xml" href="/feed.xml" title="RSS">
+          </head><body></body></html>
+        `),
+      });
+      // validateFeedUrl will also be called and should succeed
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve(`
+          <html><head>
+          <link rel="alternate" type="application/rss+xml" href="/feed.xml" title="RSS">
+          </head><body></body></html>
+        `),
+      }).mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve('<rss version="2.0"><channel><title>Test</title></channel></rss>'),
+      });
+
+      const result = await service.detectFeed('https://example.com');
+      expect(result).toBe('https://example.com/feed.xml');
+    });
+
+    it('resolves absolute URL in link tag', async () => {
+      (global.fetch as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          text: () => Promise.resolve(`
+            <html><head>
+            <link rel="alternate" type="application/rss+xml" href="https://cdn.example.com/rss" title="RSS">
+            </head><body></body></html>
+          `),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: () => Promise.resolve('<rss version="2.0"><channel><title>Test</title></channel></rss>'),
+        });
+
+      const result = await service.detectFeed('https://example.com');
+      expect(result).toBe('https://cdn.example.com/rss');
+    });
+
+    it('falls back to probing common paths when no link tag found', async () => {
+      (global.fetch as any)
+        .mockResolvedValueOnce({
+          ok: true,
+          text: () => Promise.resolve('<html><head></head><body></body></html>'),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: () => Promise.resolve('<rss version="2.0"><channel><title>Test</title></channel></rss>'),
+        });
+
+      const result = await service.detectFeed('https://example.com');
+      expect(result).toBe('https://example.com/feed');
+    });
+
+    it('returns null when no feed found anywhere', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve('<html><head></head><body></body></html>'),
+      });
+
+      const result = await service.detectFeed('https://example.com');
+      expect(result).toBeNull();
+    });
+
+    it('returns null when initial fetch fails', async () => {
+      (global.fetch as any).mockRejectedValue(new Error('timeout'));
+      const result = await service.detectFeed('https://example.com');
+      expect(result).toBeNull();
     });
   });
 });

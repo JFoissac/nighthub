@@ -1,4 +1,5 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { weatherService } from '../services/weather.service';
 import { newsService } from '../services/news.service';
 import { twitterService } from '../services/twitter.service';
@@ -23,7 +24,41 @@ const validateCity = (city: any): string => {
   return city.substring(0, 50);
 };
 
-router.get('/tweets', async (req: Request, res: Response) => {
+/** Zod body validation middleware */
+function validateBody<T extends z.ZodTypeAny>(schema: T) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    (req as any).validatedBody = parsed.data as z.infer<T>;
+    next();
+  };
+}
+
+// --- Zod schemas for POST routes ---
+// Scopes are structural only; clamping / truncation stays in handlers to preserve existing behaviour.
+const twitchImportSchema = z.object({ channels: z.array(z.string()) });
+const youtubeImportListSchema = z.object({ channels: z.array(z.string()) });
+const youtubeImportTakeoutSchema = z.object({ channels: z.array(z.object({ channelId: z.string() })) });
+const detectFeedSchema = z.object({ url: z.string().startsWith('http') });
+const preferencesSchema = z.object({
+  weatherCity: z.string().optional(),
+  twitchFollows: z.string().optional(),
+  twitchUsername: z.string().optional(),
+  youtubeChannels: z.string().optional(),
+  youtubeChannelIds: z.string().optional(),
+  twitterUsername: z.string().optional(),
+  twitterAccounts: z.string().optional(),
+  trumpMinCriticality: z.number().optional(),
+  customRssFeeds: z.string().optional(),
+  refreshInterval: z.number().optional(),
+});
+
+// --- Route handlers ---
+
+async function getTweets(req: Request, res: Response) {
   try {
     const limit = validateLimit(req.query.limit);
     const tweets = await twitterService.getTimeline(limit);
@@ -31,9 +66,9 @@ router.get('/tweets', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch tweets' });
   }
-});
+}
 
-router.get('/trump', async (req: Request, res: Response) => {
+async function getTrump(req: Request, res: Response) {
   try {
     const limit = validateLimit(req.query.limit);
     const tweets = await trumpService.getCachedTrumpTweets(limit);
@@ -41,18 +76,18 @@ router.get('/trump', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch Trump tweets' });
   }
-});
+}
 
-router.get('/streams', async (_req: Request, res: Response) => {
+async function getStreams(_req: Request, res: Response) {
   try {
     const streams = await twitchService.getFollowedStreams();
     res.json(streams);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch streams' });
   }
-});
+}
 
-router.get('/follows', async (req: Request, res: Response) => {
+async function getFollows(req: Request, res: Response) {
   try {
     const username = req.query.username as string;
     if (username) {
@@ -65,31 +100,21 @@ router.get('/follows', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch follows' });
   }
-});
+}
 
-// Twitch: Import follows from a pasted list
-router.post('/twitch/import-list', async (req: Request, res: Response) => {
+async function importTwitchList(req: Request, res: Response) {
   try {
-    const { channels } = req.body;
-    if (!channels || !Array.isArray(channels)) {
-      res.status(400).json({ error: 'channels array is required' });
-      return;
-    }
+    const { channels } = (req as any).validatedBody as z.infer<typeof twitchImportSchema>;
     const result = await twitchService.importFollowsFromList(channels);
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Failed to import channel list' });
   }
-});
+}
 
-// YouTube: Import subscriptions from a pasted list of handles
-router.post('/youtube/import-list', async (req: Request, res: Response) => {
+async function importYoutubeList(req: Request, res: Response) {
   try {
-    const { channels } = req.body;
-    if (!channels || !Array.isArray(channels)) {
-      res.status(400).json({ error: 'channels array is required' });
-      return;
-    }
+    const { channels } = (req as any).validatedBody as z.infer<typeof youtubeImportListSchema>;
     const cleaned = channels
       .map((c: string) => c.trim())
       .filter((c: string) => c.length > 0)
@@ -103,16 +128,11 @@ router.post('/youtube/import-list', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to import YouTube channels' });
   }
-});
+}
 
-// YouTube: Import subscriptions from Google Takeout CSV (channel IDs)
-router.post('/youtube/import-takeout', async (req: Request, res: Response) => {
+async function importYoutubeTakeout(req: Request, res: Response) {
   try {
-    const { channels } = req.body;
-    if (!Array.isArray(channels)) {
-      res.status(400).json({ error: 'channels array is required' });
-      return;
-    }
+    const { channels } = (req as any).validatedBody as z.infer<typeof youtubeImportTakeoutSchema>;
     const valid = channels.filter((c: any) =>
       typeof c.channelId === 'string' && /^UC[a-zA-Z0-9_-]{22}$/.test(c.channelId)
     );
@@ -124,18 +144,19 @@ router.post('/youtube/import-takeout', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to import YouTube channels from Takeout' });
   }
-});
+}
 
-router.get('/videos', async (_req: Request, res: Response) => {
+async function getVideos(req: Request, res: Response) {
   try {
-    const videos = await youtubeService.getLatestVideos();
+    const limit = validateLimit(req.query.limit);
+    const videos = await youtubeService.getLatestVideos(limit);
     res.json(videos);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch videos' });
   }
-});
+}
 
-router.get('/news', async (req: Request, res: Response) => {
+async function getNews(req: Request, res: Response) {
   try {
     const limit = validateLimit(req.query.limit);
     const news = await newsService.getCachedNews(limit);
@@ -143,9 +164,9 @@ router.get('/news', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch news' });
   }
-});
+}
 
-router.get('/weather', async (req: Request, res: Response) => {
+async function getWeather(req: Request, res: Response) {
   try {
     const city = validateCity(req.query.city);
     const forecast = await weatherService.getWeeklyForecast(city);
@@ -153,9 +174,9 @@ router.get('/weather', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch weather' });
   }
-});
+}
 
-router.get('/dashboard/stream', async (req: Request, res: Response) => {
+async function getDashboardStream(_req: Request, res: Response) {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -177,55 +198,93 @@ router.get('/dashboard/stream', async (req: Request, res: Response) => {
   }
 
   res.end();
-});
+}
 
-router.get('/dashboard', async (_req: Request, res: Response) => {
+async function getDashboard(_req: Request, res: Response) {
   try {
     const data = await aggregatorService.getDashboardData();
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch dashboard data' });
   }
-});
+}
 
-router.post('/refresh/all', async (_req: Request, res: Response) => {
+async function refreshAll(_req: Request, res: Response) {
   try {
     await aggregatorService.refreshAll();
     res.json({ success: true, message: 'Refresh initiated' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to refresh' });
   }
-});
+}
 
-router.post('/refresh/news', async (_req: Request, res: Response) => {
+async function refreshNews(_req: Request, res: Response) {
   try {
     const news = await newsService.fetchAiNews();
     res.json({ success: true, count: news.length });
   } catch (error) {
     res.status(500).json({ error: 'Failed to refresh news' });
   }
-});
+}
 
-router.post('/refresh/twitch', async (_req: Request, res: Response) => {
+async function refreshTwitch(_req: Request, res: Response) {
   try {
     await aggregatorService.refreshTwitch();
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to refresh Twitch' });
   }
-});
+}
 
-router.post('/refresh/trump', async (_req: Request, res: Response) => {
+async function refreshTrump(_req: Request, res: Response) {
   try {
     const tweets = await trumpService.fetchTrumpTweets(20);
     res.json({ success: true, count: tweets.length });
   } catch (error) {
     res.status(500).json({ error: 'Failed to refresh Trump tweets' });
   }
-});
+}
 
-// Preferences CRUD
-router.get('/preferences', async (_req: Request, res: Response) => {
+async function detectFeed(req: Request, res: Response) {
+  try {
+    const { url } = (req as any).validatedBody as z.infer<typeof detectFeedSchema>;
+    const feedUrl = await newsService.detectFeed(url);
+    if (!feedUrl) {
+      res.status(404).json({ error: 'No RSS feed found' });
+      return;
+    }
+    res.json({ feedUrl });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to detect feed' });
+  }
+}
+
+async function getTwitterAccountStats(_req: Request, res: Response) {
+  try {
+    const { prisma } = await import('../db/prisma.client');
+    const accounts = await twitterService.getTwitterAccounts();
+    const stats = await prisma.$queryRaw<{ authorHandle: string; lastSeen: string }[]>`
+      SELECT authorHandle, MAX(fetchedAt) as lastSeen FROM Tweet GROUP BY authorHandle
+    `;
+    const statsMap = new Map(stats.map(s => [
+      s.authorHandle.replace('@', '').toLowerCase(),
+      new Date(s.lastSeen),
+    ]));
+    const result = accounts.map(handle => {
+      const d = statsMap.get(handle.toLowerCase());
+      return {
+        handle,
+        lastSeen: d ? d.toISOString() : null,
+        inactive: !d || (Date.now() - d.getTime()) > 7 * 24 * 60 * 60 * 1000,
+      };
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch account stats' });
+  }
+}
+
+async function getPreferences(_req: Request, res: Response) {
   try {
     const { prisma } = await import('../db/prisma.client');
     let pref = await prisma.userPreference.findFirst();
@@ -247,24 +306,24 @@ router.get('/preferences', async (_req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch preferences' });
   }
-});
+}
 
-router.post('/preferences', async (req: Request, res: Response) => {
+async function savePreferences(req: Request, res: Response) {
   try {
     const { prisma } = await import('../db/prisma.client');
-    const { weatherCity, twitchFollows, twitchUsername, youtubeChannels, youtubeChannelIds, twitterUsername, twitterAccounts, trumpMinCriticality, customRssFeeds, refreshInterval } = req.body;
+    const body = (req as any).validatedBody as z.infer<typeof preferencesSchema>;
 
     const data: Record<string, any> = {};
-    if (typeof weatherCity === 'string') data.weatherCity = weatherCity.substring(0, 50);
-    if (typeof twitchFollows === 'string') data.twitchFollows = twitchFollows.substring(0, 10000);
-    if (typeof twitchUsername === 'string') data.twitchUsername = twitchUsername.substring(0, 50);
-    if (typeof youtubeChannels === 'string') data.youtubeChannels = youtubeChannels.substring(0, 10000);
-    if (typeof youtubeChannelIds === 'string') data.youtubeChannelIds = youtubeChannelIds.substring(0, 50000);
-    if (typeof twitterUsername === 'string') data.twitterUsername = twitterUsername.substring(0, 100);
-    if (typeof twitterAccounts === 'string') data.twitterAccounts = twitterAccounts.substring(0, 50000);
-    if (typeof trumpMinCriticality === 'number') data.trumpMinCriticality = Math.max(0, Math.min(10, trumpMinCriticality));
-    if (typeof customRssFeeds === 'string') data.customRssFeeds = customRssFeeds.substring(0, 10000);
-    if (typeof refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(60, refreshInterval));
+    if (typeof body.weatherCity === 'string') data.weatherCity = body.weatherCity.substring(0, 50);
+    if (typeof body.twitchFollows === 'string') data.twitchFollows = body.twitchFollows.substring(0, 10000);
+    if (typeof body.twitchUsername === 'string') data.twitchUsername = body.twitchUsername.substring(0, 50);
+    if (typeof body.youtubeChannels === 'string') data.youtubeChannels = body.youtubeChannels.substring(0, 10000);
+    if (typeof body.youtubeChannelIds === 'string') data.youtubeChannelIds = body.youtubeChannelIds.substring(0, 50000);
+    if (typeof body.twitterUsername === 'string') data.twitterUsername = body.twitterUsername.substring(0, 100);
+    if (typeof body.twitterAccounts === 'string') data.twitterAccounts = body.twitterAccounts.substring(0, 50000);
+    if (typeof body.trumpMinCriticality === 'number') data.trumpMinCriticality = Math.max(0, Math.min(10, body.trumpMinCriticality));
+    if (typeof body.customRssFeeds === 'string') data.customRssFeeds = body.customRssFeeds.substring(0, 10000);
+    if (typeof body.refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(60, body.refreshInterval));
 
     const existing = await prisma.userPreference.findFirst();
     if (existing) {
@@ -276,6 +335,36 @@ router.post('/preferences', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to save preferences' });
   }
-});
+}
+
+// --- Routes ---
+
+router.get('/tweets', getTweets);
+router.get('/trump', getTrump);
+router.get('/streams', getStreams);
+router.get('/follows', getFollows);
+
+router.post('/twitch/import-list', validateBody(twitchImportSchema), importTwitchList);
+router.post('/youtube/import-list', validateBody(youtubeImportListSchema), importYoutubeList);
+router.post('/youtube/import-takeout', validateBody(youtubeImportTakeoutSchema), importYoutubeTakeout);
+
+router.get('/videos', getVideos);
+router.get('/news', getNews);
+router.get('/weather', getWeather);
+
+router.get('/dashboard/stream', getDashboardStream);
+router.get('/dashboard', getDashboard);
+
+router.post('/refresh/all', refreshAll);
+router.post('/refresh/news', refreshNews);
+router.post('/refresh/twitch', refreshTwitch);
+router.post('/refresh/trump', refreshTrump);
+
+router.post('/sites/detect-feed', validateBody(detectFeedSchema), detectFeed);
+
+router.get('/twitter/account-stats', getTwitterAccountStats);
+
+router.get('/preferences', getPreferences);
+router.post('/preferences', validateBody(preferencesSchema), savePreferences);
 
 export default router;

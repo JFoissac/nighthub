@@ -1,213 +1,136 @@
-# NightHub - Plan d'Implémentation Complet
+# NightHub — Plan d'Implémentation & Correctifs
 
-## Statut — 25 avril 2026
-
-### ✅ Complété
-- Design system Neo-Noir Terminal (Stitch) : fonts, couleurs, neo-glass, label-caps
-- Header fixe avec météo, stats, status LEDs
-- Popup météo 7 jours
-- YouTube Recap : vignettes, vues, date relative, durée overlay, popup + side panel
-- Filtre Shorts par durée (YouTube Data API v3) + heuristiques #shorts/URL
-- Architecture cache-first YouTube : dashboard répond en <200ms, refresh en background parallèle
-- Script extraction abonnements YouTube (`scripts/youtube-subscriptions.js`)
-- Script extraction follows X (`scripts/x-follows.js`)
-- Script extraction follows Twitch (`scripts/twitch-follows.js`)
-- Flux RSS personnalisés dans les préférences
-- Twitch side panel push (sans backdrop, décale le dashboard)
-- Weather preferences (ville configurable)
-
-### ⚙️ Configuration requise
-- `YOUTUBE_API_KEY` dans `server/.env` pour : durées des vidéos + filtre Shorts par durée
-
-### 🔄 Limites connues
-- Nitter peut retourner 429 (rate limit) → fallback cache
-- Avatars YouTube = URLs génériques (pas les vrais avatars)
-- Filtre Shorts sans API key = heuristique seulement (#shorts dans le titre)
+**Date :** 25 avril 2026
+**Statut :** En cours — Phase de consolidation architecture + tests
 
 ---
 
-## ARCHITECTURE
+## Problèmes réels identifiés (vs croyances du plan précédent)
+
+| Problème | Ce qu'on croyait | La réalité | Action requise |
+|----------|------------------|------------|----------------|
+| **YouTube** `channelId` manquant | Ajouter `channelId` au schema | **Déjà présent** dans Prisma + cache + requête. Le vrai bug : `getChannelIds()` persiste les IDs résolus indépendamment des handles. Quand on supprime un handle, son ID reste en préférence et alimente `getCachedVideos()` via le `OR` Prisma. | Nettoyer les IDs orphelins quand les handles changent. |
+| **X/Nitter** cache manquant | Implémenter TTL 30min + cache-first | **Déjà implémenté** : `getTimeline()` retourne cache instantanément + `refreshTimeline()` en background via `setImmediate`. | ✅ Rien à faire (sauf tests). |
+| **RSS** détection auto manquante | Implémenter `detectFeed` | **Déjà implémentée** côté backend (`news.service.ts`) + modal frontend (`rss-detect-modal.component`). | ✅ Rien à faire (sauf tests). |
+| **Backend hors Nx** | C'est un monorepo Nx | Le backend `server/` a son propre `package.json`, `node_modules`, n'apparaît pas dans `nx graph`. | Intégrer le backend dans Nx. |
+| **Angular runtime en `devDependencies`** | Build fonctionne | `@angular/core`, `@angular/router` etc. sont en `devDependencies`. Risque build prod cassé. | Déplacer en `dependencies`. |
+| **Jest + Vitest coexistants** | Tests fonctionnels | `jest.config.ts` + `vitest.config.ts` + `package.json` pointe sur Jest, mais backend utilise Vitest. | Clarifier : backend = Vitest, frontend = ? |
+
+---
+
+## Correctifs en cours
+
+### 1. Architecture Nx
+- [x] Intégrer le backend dans `nx graph` via `server/project.json`
+- [x] Ajouter `workspaceLayout` et `defaultBase` dans `nx.json`
+- [x] Ajouter des tags Nx (`scope:frontend`, `scope:backend`, `type:app`, `type:service`)
+- [x] Configurer `@nx/enforce-module-boundaries` dans ESLint
+- [x] Ajouter des `paths` mappings dans `tsconfig.json`
+
+### 2. Tests
+- [x] Backend : `youtube.service.test.ts` (27 tests)
+- [x] Backend : `twitter.service.test.ts` (21 tests)
+- [x] Backend : `news.service.test.ts` (complet avec `detectFeed`, `validateFeedUrl`)
+- [x] Backend : `aggregator.service.test.ts` (scoring, cron)
+- [x] Backend : `api.routes.test.ts` (intégration Express — 24 tests)
+- [x] Frontend : `video-card.component.spec.ts`
+- [x] Frontend : `tweet-card.component.spec.ts`
+- [x] Frontend : `rss-detect-modal.component.spec.ts`
+- [x] Frontend : `api.service.spec.ts`
+- [x] Frontend : `header.component.spec.ts`
+- [x] Frontend : `weather.component.spec.ts`
+- [x] Frontend : `dashboard.component.spec.ts`
+- [x] Frontend : `ai-news.service.spec.ts`
+- [x] Frontend : `trump.service.spec.ts`
+
+### 3. YouTube — Solution retenue (Hybrid RSS + API v3 + Piped fallback)
+
+**Pourquoi :** Le RSS par chaîne est gratuit, simple, déjà en place. L'API v3 seule est trop coûteuse (`search.list` = 100 unités/appel). Le scraping HTML est trop fragile.
+
+**Architecture :**
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│                        FRONTEND (Angular 21)                       │
-│   Dashboard ← → ApiService ← → State Management (Signals)         │
-└────────────────────────────┬───────────────────────────────────────┘
-                             │ HTTP (REST)
-┌────────────────────────────▼───────────────────────────────────────┐
-│                     BACKEND (Express + Node.js)                     │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐               │
-│   │ YouTube API │  │ Twitch API  │  │ Twitter API │               │
-│   │  OAuth2     │  │  OAuth2     │  │  Bearer     │               │
-│   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘               │
-│          │                │                │                      │
-│          └────────────────┼────────────────┘                       │
-│                           ↓                                        │
-│              ┌────────────────────────┐                            │
-│              │   DataAggregator        │                            │
-│              │   + RelevanceScore      │                            │
-│              └───────────┬────────────┘                            │
-└──────────────────────────┼────────────────────────────────────────┘
-                           ↓
-┌──────────────────────────▼────────────────────────────────────────┐
-│                    DATABASE (SQLite + Prisma)                      │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
-│  │ tweets   │ │ streams  │ │ videos   │ │ news     │           │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
-│  ┌──────────────────┐  ┌──────────────────┐                      │
-│  │ oauth_tokens    │  │ user_preferences │                      │
-│  └──────────────────┘  └──────────────────┘                      │
-└──────────────────────────────────────────────────────────────────┘
+Couche 1 (principal) : Flux RSS par chaîne
+  → https://www.youtube.com/feeds/videos.xml?channel_id=ID
+  → 15 dernières vidéos, très léger, pas de clé API
+  → Retry exponentiel avec jitter en cas de 404
+  → Concurrence limitée à 20
+
+Couche 2 (durées / filtres shorts) : YouTube Data API v3 — UNIQUEMENT videos.list
+  → RSS fournit la liste des videoIds
+  → Appel batch `videos.list?part=contentDetails&id=...` (1 unité / 50 IDs)
+  → 50 chaînes × 15 vidéos = 750 IDs → 15 unités/jour (vs 5 000 avec search.list)
+  → Filtrage shorts par durée exacte (< 60s)
+
+Couche 3 (fallback) : Piped / Invidious
+  → Fallback automatique quand API v3 manque ou échoue
+  → `GET /streams/{videoId}` retourne `duration` en secondes
+  → Concurrence limitée à 10 appels parallèles
+  → Configurable via `PIPED_INSTANCE_URL` dans .env
 ```
 
-## CHOIX TECHNIQUES
+**Gestion des shorts :**
+1. Heuristique rapide : `#shorts` dans le titre, `/shorts/` dans l'URL
+2. Durée précise : `< 60s` via API v3 (si clé configurée)
+3. Fallback : si pas de durée, garder l'heuristique seule
 
-| Composant | Choix | Justification |
-|-----------|-------|---------------|
-| **Database** | SQLite + Prisma | Local, zero-config, performant, Type-safe |
-| **Backend** | Express.js | Simplicité, déjà dans package.json |
-| **Auth** | OAuth2 popup pour YouTube/Twitch | Standard, sécurisé |
-| **YouTube** | Google OAuth2 | API YouTube Data v3 |
-| **Twitch** | Twitch OAuth2 | Helix API |
-| **Twitter/X** | Twitter Bearer Token | API v2 |
-| **Scraper** | RSS pour AI news | Simple et efficace |
-| **Scheduling** | node-cron | Refresh données automatique |
-| **CORS** | cors middleware | Backend <-> Frontend |
+**Gestion des IDs orphelins :**
+- Quand `saveChannelHandles()` est appelé, comparer les anciens handles avec les nouveaux
+- Supprimer de `youtubeChannelIds` les IDs dont le handle correspondant a été retiré
+- Ou plus simple : ne pas persister les IDs résolus dans les préférences, les stocker dans une table dédiée `YoutubeChannel` avec relation handle → id + `lastResolvedAt`
 
-## API ENDPOINTS BACKEND
+### 4. Qualité backend
+- [ ] Extraire les routes Express monolithiques (`api.routes.ts` 324 lignes)
+- [ ] Sortir `node-cron` du constructeur de `AggregatorService`
+- [ ] Ajouter validation d'input (Zod) sur les routes
+- [ ] Remplacer les singletons manuels par des factories testables
+
+---
+
+## API Endpoints
 
 ```
 GET  /health                           → Health check
-GET  /api/auth/youtube                → Start YouTube OAuth popup
-GET  /api/auth/youtube/callback       → OAuth callback, close popup
-GET  /api/auth/twitch                 → Start Twitch OAuth popup
-GET  /api/auth/twitch/callback        → OAuth callback, close popup
-GET  /api/auth/status                 → { youtube: bool, twitch: bool }
-POST /api/auth/logout                 → Clear tokens for provider
-
 GET  /api/tweets                      → Get tweets (query: limit)
 GET  /api/streams                     → Get live streams
 GET  /api/videos                      → Get YouTube feed
 GET  /api/news                        → Get AI news
 GET  /api/weather?city=Caen           → Get weather
-
 POST /api/refresh/all                 → Force refresh all sources
 POST /api/refresh/:source             → Refresh specific source
 GET  /api/feeds/dashboard             → Aggregated feed for dashboard
 GET  /api/preferences                 → Get user preferences
 PUT  /api/preferences                 → Update preferences
+POST /api/sites/detect-feed          → Detect RSS feed from URL
 ```
 
-## VARIABLES D'ENVIRONNEMENT (.env)
+## Variables d'environnement
 
 ```env
-# Server
 PORT=3000
 NODE_ENV=development
-
-# YouTube OAuth
-YOUTUBE_CLIENT_ID=your_client_id
-YOUTUBE_CLIENT_SECRET=your_client_secret
-YOUTUBE_REDIRECT_URI=http://localhost:3000/api/auth/youtube/callback
-
-# Twitch OAuth
-TWITCH_CLIENT_ID=your_client_id
-TWITCH_CLIENT_SECRET=your_client_secret
-TWITCH_REDIRECT_URI=http://localhost:3000/api/auth/twitch/callback
-
-# Twitter Bearer Token
-TWITTER_BEARER_TOKEN=your_bearer_token
-
-# OpenWeatherMap (weather)
-OPENWEATHERMAP_API_KEY=a74ad14a60941c71f4640e590912d3ac
-
-# Prisma
 DATABASE_URL="file:./dev.db"
+YOUTUBE_API_KEY=your_key          # Optionnel mais recommandé pour durées exactes
+OPENWEATHERMAP_API_KEY=a74ad14a60941c71f4640e590912d3ac
+# Piped/Invidious fallback optionnel :
+# PIPED_INSTANCE_URL=https://pipedapi.kavin.rocks
 ```
 
-## RSS FEEDS AI NEWS
+## Cron Jobs
 
-- Anthropic: https://www.anthropic.com/news.rss
-- OpenCode: https://opencode.ai/blog/rss.xml
-- Kimi: https://kimi.moonshot.cn/blog/rss
+- Toutes les 30 min : Refresh all data sources
+- Toutes les 5 min : Check Twitch live status
+- Toutes les 15 min : Refresh Trump tweets
 
-## SCORING ALGORITHM
+---
 
-```javascript
-score = (
-  recencyWeight * (1 - ageHours/maxAge) +
-  engagementWeight * normalizedEngagement +
-  sourceWeight * sourceMultiplier
-)
+## Phase actuelle : Consolidation
 
-// Weights: recency=0.5, engagement=0.3, source=0.2
-// maxAge: 24h tweets, 7d videos, 1h news
-```
-
-## CRON JOBS
-
-- Every 30 min: Refresh all data sources
-- Every 5 min: Check Twitch live status
-- Cache TTL: 1h for news, 30min for streams/videos
-
-## DEFAULT CONFIG
-
-| Setting | Value |
-|---------|-------|
-| Weather City | Caen |
-| Refresh Interval | 30 minutes |
-| YouTube Subscriptions | User's personal subscriptions |
-| Twitch Follows | User's personal follows |
-| Twitter Timeline | User's personal timeline |
-
-## BACKEND STRUCTURE
-
-```
-server/
-├── prisma/
-│   └── schema.prisma            # Database schema
-├── src/
-│   ├── config/
-│   │   └── env.ts              # Environment variables
-│   ├── routes/
-│   │   ├── health.routes.ts    # Health check
-│   │   ├── auth.routes.ts      # OAuth flows
-│   │   └── api.routes.ts       # All API endpoints
-│   ├── controllers/
-│   │   ├── youtube.controller.ts
-│   │   ├── twitch.controller.ts
-│   │   ├── twitter.controller.ts
-│   │   ├── weather.controller.ts
-│   │   └── news.controller.ts
-│   ├── services/
-│   │   ├── youtube.service.ts
-│   │   ├── twitch.service.ts
-│   │   ├── twitter.service.ts
-│   │   ├── weather.service.ts
-│   │   ├── news.service.ts
-│   │   └── aggregator.service.ts
-│   ├── middleware/
-│   │   ├── error.middleware.ts
-│   │   └── cors.middleware.ts
-│   ├── db/
-│   │   └── prisma.client.ts
-│   └── app.ts
-├── .env.example
-└── package.json
-```
-
-## FRONTEND CHANGES
-
-1. **ApiService** - HttpClient to backend
-2. **Settings page** - OAuth popup buttons for YouTube/Twitch
-3. **Guard inputs** - All components with input.required → guards added
-4. **Dashboard** - Uses backend API instead of mock data
-
-## IMPLEMENTATION PHASES
-
-1. Backend Express + Prisma + SQLite
-2. OAuth services (YouTube, Twitch) with popup flow
-3. Data services (Twitter, Weather, News)
-4. Aggregator + scoring + cron jobs
-5. Frontend integration with guards
-6. Tests
+1. ✅ Tests backend (youtube, twitter, news, aggregator, api.routes)
+2. ✅ Intégration backend dans Nx (`server/project.json`, tags, boundaries)
+3. ✅ Tests frontend (video-card, tweet-card, rss-detect-modal, api.service, header, weather, dashboard)
+4. ✅ Implémentation solution YouTube hybride (RSS + API v3 + Piped fallback)
+5. ✅ Validation Zod sur les routes (middleware `validateBody`)
+6. ✅ Retry RSS avec jitter + fallback Piped pour les durées
+7. ⏳ Refactoring routes backend (extraction modulaire)
+8. ⏳ Intégration backend dans workspace package manager

@@ -26,7 +26,19 @@ describe('WeatherComponent', () => {
 
   describe('getIcon', () => {
     it('should return an emoji string', () => {
-      const icon = component.getIcon();
+      const mockDay = {
+        condition: 'Ensoleille',
+        temp: 20,
+        tempMin: 15,
+        tempMax: 25,
+        wind: 10,
+        humidity: 60,
+        precipitation: 0,
+        icon: '01d',
+        forecastDate: new Date(),
+        dayIndex: 0,
+      } as any;
+      const icon = component.getIcon(mockDay);
       expect(typeof icon).toBe('string');
       expect(icon.length).toBeGreaterThan(0);
     });

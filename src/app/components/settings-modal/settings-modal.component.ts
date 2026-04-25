@@ -1,7 +1,7 @@
-import { Component, EventEmitter, OnInit, Output, signal, inject } from '@angular/core';
+import { Component, EventEmitter, OnInit, Output, signal, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ApiService, UserPreferences } from '../../services/api.service';
+import { ApiService, UserPreferences, TwitterAccountStat } from '../../services/api.service';
 
 @Component({
   selector: 'app-settings-modal',
@@ -172,15 +172,37 @@ import { ApiService, UserPreferences } from '../../services/api.service';
             </div>
             @if (twitterList().length > 0) {
               <div class="space-y-1">
-                <label class="text-xs text-text-secondary">Comptes surveillés :</label>
+                <div class="flex items-center justify-between">
+                  <label class="text-xs text-text-secondary">Comptes surveillés :</label>
+                  @if (inactiveCount() > 0) {
+                    <button
+                      (click)="removeInactiveAccounts()"
+                      class="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors border border-red-500/20"
+                    >
+                      Supprimer les {{ inactiveCount() }} inactifs
+                    </button>
+                  }
+                </div>
                 <div class="flex flex-wrap gap-1.5">
                   @for (acc of twitterList(); track acc) {
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/15 text-blue-300 rounded text-xs font-mono">
+                    @let stat = twitterStats().get(acc.toLowerCase());
+                    @let isInactive = stat?.inactive ?? false;
+                    <span
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono"
+                      [class]="isInactive ? 'bg-red-500/15 text-red-300 border border-red-500/30' : 'bg-blue-500/15 text-blue-300'"
+                      [title]="stat?.lastSeen ? ('Vu : ' + (stat!.lastSeen | date:'dd/MM/yy')) : 'Jamais vu'"
+                    >
                       &#64;{{ acc }}
+                      @if (isInactive) {
+                        <span class="text-red-400/70 text-[9px]">inactif</span>
+                      }
                       <button (click)="removeTwitterAccount(acc)" class="hover:text-red-400 transition-colors ml-0.5">&times;</button>
                     </span>
                   }
                 </div>
+                @if (twitterStats().size > 0) {
+                  <p class="text-[10px] text-text-muted mt-1">Rouge = aucun tweet depuis 30 jours</p>
+                }
               </div>
             }
           </section>
@@ -328,12 +350,29 @@ export class SettingsModalComponent implements OnInit {
   twitterAccountCount = signal(0);
   savedSignal = signal(false);
   takeoutImportResult = signal<string | null>(null);
+  twitterStats = signal<Map<string, TwitterAccountStat>>(new Map());
+
+  inactiveCount = computed(() => {
+    const stats = this.twitterStats();
+    return this.twitterList().filter(acc => stats.get(acc.toLowerCase())?.inactive).length;
+  });
 
   // Alias for template
   get savedValue() { return this.savedSignal; }
 
   ngOnInit() {
     this.loadPreferences();
+    this.loadTwitterStats();
+  }
+
+  loadTwitterStats() {
+    this.apiService.getTwitterAccountStats().subscribe({
+      next: (stats) => {
+        const map = new Map<string, TwitterAccountStat>();
+        for (const s of stats) map.set(s.handle.toLowerCase(), s);
+        this.twitterStats.set(map);
+      },
+    });
   }
 
   loadPreferences() {
@@ -437,6 +476,13 @@ export class SettingsModalComponent implements OnInit {
     reader.readAsText(file);
     // Reset input so same file can be re-selected
     (event.target as HTMLInputElement).value = '';
+  }
+
+  removeInactiveAccounts() {
+    const stats = this.twitterStats();
+    const active = this.twitterList().filter(acc => !stats.get(acc.toLowerCase())?.inactive);
+    this.prefs.twitterAccounts = active.join(',');
+    this.updateLists();
   }
 
   removeTwitterAccount(account: string) {

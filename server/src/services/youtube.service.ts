@@ -1,4 +1,5 @@
 import { prisma } from '../db/prisma.client';
+import { config } from '../config/env';
 import Parser from 'rss-parser';
 
 const rssParser = new Parser({
@@ -29,13 +30,23 @@ export class YoutubeService {
 
   /** Save channel handles to preferences */
   async saveChannelHandles(handles: string[]): Promise<void> {
-    const value = handles.map(h => h.trim()).filter(Boolean).join(',');
+    const normalized = handles.map(h => h.trim()).filter(Boolean);
+    const value = normalized.join(',');
     try {
       const existing = await prisma.userPreference.findFirst();
       if (existing) {
         await prisma.userPreference.update({ where: { id: existing.id }, data: { youtubeChannels: value } });
       } else {
         await prisma.userPreference.create({ data: { youtubeChannels: value } });
+      }
+
+      // Reconcile channel IDs: resolve current handles and replace stored IDs to remove orphans
+      if (normalized.length > 0) {
+        const resolved = await Promise.all(normalized.map(h => this.resolveChannelId(h)));
+        const validIds = resolved.filter((id): id is string => id !== null);
+        await this.saveChannelIds(validIds);
+      } else {
+        await this.saveChannelIds([]);
       }
     } catch (e) {
       console.error('Save youtube channels error:', e);
@@ -99,11 +110,11 @@ export class YoutubeService {
   }
 
   /**
-   * FAST: Return cached videos from DB (last 3 days, max 20).
+   * FAST: Return cached videos from DB (last 3 days, max limit).
    * If cache is empty (first run), triggers a background fetch without blocking.
    */
-  async getLatestVideos(): Promise<any[]> {
-    const cached = await this.getCachedVideos();
+  async getLatestVideos(limit: number = 20): Promise<any[]> {
+    const cached = await this.getCachedVideos(limit);
     if (cached.length === 0) {
       // First run or cache cleared — trigger background fetch without blocking caller
       setImmediate(() => this.fetchAndCacheLatestVideos().catch(console.error));
@@ -116,7 +127,7 @@ export class YoutubeService {
    * Called by refresh jobs and cron. NOT called by getDashboardData.
    */
   async fetchAndCacheLatestVideos(): Promise<void> {
-    const CONCURRENCY = 10;
+    const CONCURRENCY = 20;
 
     const handles = await this.getChannelHandles();
     const channelIds = await this.getChannelIds();
@@ -144,45 +155,49 @@ export class YoutubeService {
       }
     }
 
-    allVideos.sort((a, b) =>
-      new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
-    );
+    if (allVideos.length === 0) return;
 
-    if (allVideos.length > 0) {
-      await this.cacheVideos(allVideos.slice(0, 50));
-      console.log(`[YouTube] Cached ${Math.min(allVideos.length, 50)} videos`);
+    // Fetch durations from YouTube Data API v3 in ONE global batch (optional — requires YOUTUBE_API_KEY)
+    const videoIds = allVideos.map((v: any) => v.youtubeId).filter(Boolean);
+    const durationsMap = await this.fetchDurations(videoIds);
+
+    for (const v of allVideos) {
+      const iso = durationsMap.get(v.youtubeId) || '';
+      v.duration = this.formatDuration(iso);
+      v.durationSeconds = this.parseDurationSeconds(iso);
+    }
+
+    const filtered = allVideos
+      .filter((v: any) => !this.isShort(v))
+      .sort((a, b) =>
+        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()
+      );
+
+    if (filtered.length > 0) {
+      await this.cacheVideos(filtered.slice(0, 50));
+      console.log(`[YouTube] Cached ${Math.min(filtered.length, 50)} videos`);
     }
   }
 
   /** Fetch and process a single channel's RSS feed */
   private async fetchChannelVideos(handle: string): Promise<any[]> {
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
-    const cutoff = Date.now() - THREE_DAYS_MS;
-
     let channelId: string | null = null;
 
-    if (handle.startsWith('UC') && handle.length > 20) {
+    if (/^UC[a-zA-Z0-9_-]{22}$/.test(handle)) {
       channelId = handle;
     } else {
       channelId = await this.resolveChannelId(handle);
-      if (channelId) {
-        // Persist resolved ID so it's not re-resolved on next refresh
-        const existingIds = await this.getChannelIds();
-        if (!existingIds.includes(channelId)) {
-          await this.saveChannelIds([...existingIds, channelId]);
-        }
-      }
     }
 
     if (!channelId) return [];
 
     try {
       const feedUrl = `${YT_RSS_BASE}?channel_id=${channelId}`;
-      const feed = await rssParser.parseURL(feedUrl);
+      const feed = await this.parseRSSWithRetry(feedUrl);
       const channelName = feed.title || handle;
 
-      const rawVideos = (feed.items || [])
-        .slice(0, 10)
+      return (feed.items || [])
+        .slice(0, 15)
         .map((item: any) => {
           const videoId = item.id?.replace('yt:video:', '') || '';
           const mediaGroup = item.mediaGroup || {};
@@ -190,53 +205,78 @@ export class YoutubeService {
             mediaGroup?.['media:community']?.['media:statistics']?.['$']?.views || '0', 10
           );
           const pubDate = item.pubDate || item.isoDate || new Date().toISOString();
+          const title = item.title || 'No title';
+          const isLive = this.isLiveStream(title);
           return {
             youtubeId: videoId,
-            title: item.title || 'No title',
+            title,
             thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
             channelName,
-            channelAvatar: `https://yt3.googleusercontent.com/ytc/${channelId}`,
+            channelAvatar: '',
             channelId,
             channelHandle: handle,
             duration: '',
             durationSeconds: 0,
             views,
             url: item.link || `https://www.youtube.com/watch?v=${videoId}`,
-            isNew: this.isRecent(pubDate),
+            isNew: this.isRecent(pubDate) && !isLive,
+            isLive,
             publishedAt: pubDate,
           };
-        })
-        .filter((v: any) => new Date(v.publishedAt).getTime() >= cutoff); // 3-day filter
-
-      if (rawVideos.length === 0) return [];
-
-      // Fetch durations from YouTube Data API v3 (optional — requires YOUTUBE_API_KEY)
-      const videoIds = rawVideos.map((v: any) => v.youtubeId).filter(Boolean);
-      const durationsMap = await this.fetchDurations(videoIds);
-
-      return rawVideos
-        .map((v: any) => {
-          const iso = durationsMap.get(v.youtubeId) || '';
-          return {
-            ...v,
-            duration: this.formatDuration(iso),
-            durationSeconds: this.parseDurationSeconds(iso),
-          };
-        })
-        .filter((v: any) => !this.isShort(v))
-        .slice(0, 5);
+        });
     } catch (e) {
       console.error(`YouTube RSS error for ${handle}:`, e);
       return [];
     }
   }
 
-  /** Batch-fetch video durations from YouTube Data API v3 */
-  private async fetchDurations(videoIds: string[]): Promise<Map<string, string>> {
-    const apiKey = process.env.YOUTUBE_API_KEY;
-    if (!apiKey || apiKey === 'your_youtube_data_api_key' || !videoIds.length) {
-      return new Map();
+  private async parseRSSWithRetry(url: string): Promise<any> {
+    const maxRetries = 3;
+    const delays = [1000, 2000, 4000];
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await rssParser.parseURL(url);
+      } catch (err: any) {
+        const isRetryable = err?.status === 404 || err?.code === 'ETIMEDOUT' || err?.message?.includes('timeout') || err?.message?.includes('404');
+        if (attempt === maxRetries || !isRetryable) {
+          throw err;
+        }
+        const jitter = Math.round(Math.random() * 500);
+        const wait = delays[attempt] + jitter;
+        console.warn(`[YouTube] RSS parse attempt ${attempt + 1} failed for ${url}, retrying in ${wait}ms...`);
+        await new Promise(r => setTimeout(r, wait));
+      }
     }
+    throw new Error('Unreachable');
+  }
+
+  /** Batch-fetch video durations: API v3 first, then Piped fallback */
+  private async fetchDurations(videoIds: string[]): Promise<Map<string, string>> {
+    if (!videoIds.length) return new Map();
+
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    const hasValidApiKey = apiKey && apiKey !== 'your_youtube_data_api_key';
+
+    if (hasValidApiKey) {
+      const durations = await this.fetchYouTubeApiDurations(videoIds, apiKey as string);
+      const missing = videoIds.filter(id => !durations.has(id) || !durations.get(id));
+      if (missing.length === 0) return durations;
+
+      // Fallback to Piped for missing durations
+      const pipedDurations = await this.fetchPipedDurations(missing);
+      for (const [id, iso] of pipedDurations) {
+        durations.set(id, iso);
+      }
+      return durations;
+    }
+
+    // No API key: use Piped exclusively
+    return this.fetchPipedDurations(videoIds);
+  }
+
+  /** Fetch durations from YouTube Data API v3 */
+  private async fetchYouTubeApiDurations(videoIds: string[], apiKey: string): Promise<Map<string, string>> {
     const durations = new Map<string, string>();
     for (let i = 0; i < videoIds.length; i += 50) {
       const batch = videoIds.slice(i, i + 50).join(',');
@@ -249,10 +289,68 @@ export class YoutubeService {
           durations.set(item.id, item.contentDetails?.duration || '');
         }
       } catch (e) {
-        console.error('YouTube duration fetch error:', e);
+        console.error('YouTube Data API v3 duration fetch error:', e);
       }
     }
     return durations;
+  }
+
+  /** Fetch durations from Piped/Invidious instance as fallback */
+  private async fetchPipedDurations(videoIds: string[]): Promise<Map<string, string>> {
+    const instanceUrl = config.piped.instanceUrl;
+    if (!instanceUrl || !videoIds.length) {
+      return new Map();
+    }
+
+    const durations = new Map<string, string>();
+    const CONCURRENCY = 10;
+
+    for (let i = 0; i < videoIds.length; i += CONCURRENCY) {
+      const batch = videoIds.slice(i, i + CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(id => this.fetchPipedStream(instanceUrl, id))
+      );
+
+      for (let j = 0; j < results.length; j++) {
+        const result = results[j];
+        if (result.status === 'fulfilled' && result.value > 0) {
+          durations.set(batch[j], this.secondsToIsoDuration(result.value));
+        }
+      }
+    }
+
+    if (durations.size > 0) {
+      console.log(`[YouTube] Piped fallback resolved ${durations.size}/${videoIds.length} durations`);
+    }
+    return durations;
+  }
+
+  /** Fetch a single video stream from Piped to extract duration */
+  private async fetchPipedStream(instanceUrl: string, videoId: string): Promise<number> {
+    try {
+      const url = `${instanceUrl.replace(/\/$/, '')}/streams/${videoId}`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': YT_USER_AGENT },
+      });
+      if (!res.ok) return 0;
+      const data = await res.json();
+      return typeof data.duration === 'number' ? data.duration : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Convert seconds to ISO 8601 duration */
+  private secondsToIsoDuration(totalSeconds: number): string {
+    if (totalSeconds <= 0) return '';
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    let iso = 'PT';
+    if (h > 0) iso += `${h}H`;
+    if (m > 0 || (h > 0 && s === 0)) iso += `${m}M`;
+    if (s > 0 || (h === 0 && m === 0)) iso += `${s}S`;
+    return iso;
   }
 
   /** Parse ISO 8601 duration to total seconds (PT1H2M3S → 3723) */
@@ -286,6 +384,12 @@ export class YoutubeService {
     return isHashShort || isDurationShort;
   }
 
+  /** Heuristic: detect live streams from title keywords */
+  private isLiveStream(title: string): boolean {
+    const t = title.toLowerCase();
+    return /\b(live|en direct|🔴|premiere|première)\b/.test(t);
+  }
+
   private isRecent(pubDate?: string): boolean {
     if (!pubDate) return false;
     const diffHours = (Date.now() - new Date(pubDate).getTime()) / (1000 * 60 * 60);
@@ -308,6 +412,7 @@ export class YoutubeService {
             duration: v.duration || '',
             url: v.url,
             isNew: v.isNew,
+            isLive: v.isLive || false,
             views: v.views || 0,
             publishedAt: v.publishedAt ? new Date(v.publishedAt) : undefined,
           },
@@ -323,6 +428,7 @@ export class YoutubeService {
             views: v.views || 0,
             url: v.url,
             isNew: v.isNew,
+            isLive: v.isLive || false,
             publishedAt: v.publishedAt ? new Date(v.publishedAt) : new Date(),
           },
         });
@@ -332,9 +438,8 @@ export class YoutubeService {
     }
   }
 
-  async getCachedVideos(): Promise<any[]> {
+  async getCachedVideos(limit: number = 20): Promise<any[]> {
     try {
-      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
       const [channelIds, channelHandles] = await Promise.all([
         this.getChannelIds(),
         this.getChannelHandles(),
@@ -342,15 +447,56 @@ export class YoutubeService {
 
       if (channelIds.length === 0 && channelHandles.length === 0) return [];
 
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+
+      const orConditions: any[] = [];
+      if (channelIds.length > 0) {
+        orConditions.push({ channelId: { in: channelIds } });
+      }
+      if (channelHandles.length > 0) {
+        orConditions.push({ channelHandle: { in: channelHandles } });
+      }
+
       return await prisma.youtubeVideo.findMany({
         where: {
           publishedAt: { gte: threeDaysAgo },
-          OR: [
-            { channelId: { in: [...channelIds, ''] } },
-            ...(channelHandles.length > 0 ? [{ channelHandle: { in: channelHandles } }] : []),
-          ],
+          isLive: false,
+          ...(orConditions.length > 0 ? { OR: orConditions } : {}),
         },
-        take: 20,
+        take: limit,
+        orderBy: { publishedAt: 'desc' },
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  async getCachedLiveStreams(limit: number = 20): Promise<any[]> {
+    try {
+      const [channelIds, channelHandles] = await Promise.all([
+        this.getChannelIds(),
+        this.getChannelHandles(),
+      ]);
+
+      if (channelIds.length === 0 && channelHandles.length === 0) return [];
+
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+
+      const orConditions: any[] = [];
+      if (channelIds.length > 0) {
+        orConditions.push({ channelId: { in: channelIds } });
+      }
+      if (channelHandles.length > 0) {
+        orConditions.push({ channelHandle: { in: channelHandles } });
+      }
+
+      return await prisma.youtubeVideo.findMany({
+        where: {
+          publishedAt: { gte: threeDaysAgo },
+          isLive: true,
+          ...(orConditions.length > 0 ? { OR: orConditions } : {}),
+        },
+        take: limit,
         orderBy: { publishedAt: 'desc' },
       });
     } catch {

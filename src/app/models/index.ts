@@ -87,6 +87,7 @@ export interface YoutubeVideo {
   publishedAt?: Date;
   url: string;
   isNew?: boolean;
+  isLive?: boolean;
 }
 
 export interface TweetItem {

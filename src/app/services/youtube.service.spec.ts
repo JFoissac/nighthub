@@ -42,9 +42,19 @@ describe('YoutubeService', () => {
 
     it('should have numeric view counts', () => {
       const videos = service.getVideos()();
-      videos.forEach(video => {
+      videos.forEach((video) => {
         expect(typeof video.views).toBe('number');
       });
+    });
+
+    it('should return the correct initial video data', () => {
+      const videos = service.getVideos()();
+      expect(videos[0].title).toBe(
+        'I Built a Full AI Agent in 48 Hours'
+      );
+      expect(videos[0].channelName).toBe('TechCrunch');
+      expect(videos[0].duration).toBe('18:42');
+      expect(videos[0].views).toBe(245000);
     });
   });
 
@@ -62,6 +72,13 @@ describe('YoutubeService', () => {
       newVideos.forEach((video, index) => {
         expect(video.id).toBe(originalVideos[index].id);
       });
+    });
+
+    it('should increase view counts after refresh', () => {
+      const originalViews = service.getVideos()()[0].views;
+      service.refresh();
+      const newViews = service.getVideos()()[0].views;
+      expect(newViews).toBeGreaterThan(originalViews);
     });
   });
 });

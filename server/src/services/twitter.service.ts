@@ -2,7 +2,7 @@ import { prisma } from '../db/prisma.client';
 import Parser from 'rss-parser';
 
 const rssParser = new Parser({
-  timeout: 10000,
+  timeout: 4000,  // fail fast — most public instances are dead or slow
   headers: {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'application/rss+xml, application/xml, text/xml, */*',
@@ -11,10 +11,11 @@ const rssParser = new Parser({
   customFields: { item: ['dc:creator'] },
 });
 
+// Public Nitter instances — frequently go down; update this list as needed
 const NITTER_INSTANCES = [
   'https://nitter.net',
+  'https://nitter.cz',
   'https://nitter.poast.org',
-  'https://nitter.privacydev.net',
 ];
 
 export class TwitterService {
@@ -82,40 +83,19 @@ export class TwitterService {
     }
   }
 
-  /** Scrape Nitter for all accounts and cache results */
+  /**
+   * Twitter/Nitter feed is DISABLED — all public Nitter instances are dead (403/timeouts).
+   * This method is kept for backward compatibility but does nothing.
+   */
   private async refreshTimeline(): Promise<void> {
-    try {
-      const accounts = await this.getTwitterAccounts();
-      if (accounts.length === 0) return;
-
-      const results = await this.batchSettled(
-        accounts,
-        (username: string) => this.fetchNitterRSS(username),
-        25,
-      );
-
-      const all: any[] = [];
-      for (const result of results) {
-        if (result.status === 'fulfilled') all.push(...result.value);
-      }
-
-      if (all.length === 0) return;
-
-      all.sort((a, b) => new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime());
-      await this.cacheTweets(all.slice(0, 20));
-    } catch (e) {
-      console.error('Twitter refresh error:', e);
-    }
+    // Nitter disabled — no network calls
+    return;
   }
 
   /** Get aggregated tweets from all configured accounts, sorted by date */
   async getTimeline(limit: number = 20, onProgress?: (done: number, total: number) => void): Promise<any[]> {
-    const cached = await this.getCachedTweets(limit);
-    const stale = await this.isCacheStale(30);
-    if (stale) {
-      setImmediate(() => this.refreshTimeline().catch(console.error));
-    }
-    return cached;
+    // Return cached data without triggering any network refresh
+    return this.getCachedTweets(limit);
   }
 
   private cleanContent(text: string): string {
@@ -188,4 +168,8 @@ export class TwitterService {
   }
 }
 
-export const twitterService = new TwitterService();
+export function createTwitterService(): TwitterService {
+  return new TwitterService();
+}
+
+export const twitterService = createTwitterService();

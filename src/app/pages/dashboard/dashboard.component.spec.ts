@@ -14,6 +14,7 @@ describe('DashboardComponent', () => {
     refreshAllCalled = false;
     mockApiService = {
       getDashboard: () => of({} as any),
+      getDashboardStream: () => of({} as any),
       getTweets: () => of([]),
       getStreams: () => of([]),
       getVideos: () => of([]),

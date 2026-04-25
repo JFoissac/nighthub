@@ -12,6 +12,12 @@ export interface DashboardData {
   refreshedAt: Date;
 }
 
+export interface TwitterAccountStat {
+  handle: string;
+  lastSeen: string | null;
+  inactive: boolean;
+}
+
 export interface AuthStatus {
   youtube: boolean;
   twitch: boolean;
@@ -120,8 +126,8 @@ export class ApiService {
     );
   }
 
-  getVideos(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/videos`).pipe(
+  getVideos(limit: number = 20): Observable<any[]> {
+    return this.http.get<any[]>(`${this.baseUrl}/videos?limit=${limit}`).pipe(
       catchError(this.handleError)
     );
   }
@@ -214,6 +220,24 @@ export class ApiService {
     return this.http.post<{ imported: number; channels: string[] }>(
       `${this.baseUrl}/youtube/import-list`, { channels }
     ).pipe(catchError(this.handleError));
+  }
+
+  getTwitterAccountStats(): Observable<TwitterAccountStat[]> {
+    return this.http.get<TwitterAccountStat[]>(`${this.baseUrl}/twitter/account-stats`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  detectFeed(url: string): Observable<{ feedUrl: string }> {
+    return this.http.post<{ feedUrl: string }>(`${this.baseUrl}/sites/detect-feed`, { url }).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  refreshNews(): Observable<any> {
+    return this.http.post(`${this.baseUrl}/refresh/news`, {}).pipe(
+      catchError(this.handleError)
+    );
   }
 
   importYoutubeTakeout(channels: { channelId: string; title: string }[]): Observable<{ imported: number; total: number }> {

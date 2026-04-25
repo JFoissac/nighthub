@@ -7,7 +7,7 @@ import { twitchService } from './twitch.service';
 import { trumpService } from './trump.service';
 
 export class AggregatorService {
-  constructor() {
+  start(): void {
     this.initCronJobs();
   }
 
@@ -38,7 +38,7 @@ export class AggregatorService {
       await Promise.allSettled([
         weatherService.getWeeklyForecast('Caen'),
         newsService.fetchAiNews(),
-        twitterService.getTimeline(20),
+        // twitterService.getTimeline(20), // DISABLED — Nitter is dead
         youtubeService.fetchAndCacheLatestVideos(),
         twitchService.getFollowedStreams(),
         trumpService.fetchTrumpTweets(20),
@@ -127,14 +127,16 @@ export class AggregatorService {
 
       // Fast sources in parallel
       onProgress?.('Loading streams, videos, news...');
-      const [streams, videos, news, trump] = await Promise.allSettled([
+      const [streams, videos, news, trump, youtubeLives] = await Promise.allSettled([
         twitchService.getFollowedStreams(),
-        youtubeService.getLatestVideos(),
+        youtubeService.getLatestVideos(20),
         newsService.getCachedNews(20),
         trumpService.getCachedTrumpTweets(20),
+        youtubeService.getCachedLiveStreams(10),
       ]);
 
-      const tweetsResult = await twitterService.getTimeline(20).catch(() => [] as any[]);
+      // Twitter/Nitter is DISABLED — all public instances are dead
+      const tweetsResult: any[] = [];
 
       onProgress?.('Done');
 
@@ -144,10 +146,29 @@ export class AggregatorService {
         trumpData = trumpData.filter((t: any) => t.criticality >= trumpMinCriticality);
       }
 
+      // Merge YouTube live streams into Twitch streams
+      const twitchStreams = streams.status === 'fulfilled' ? streams.value : [];
+      const ytLives = youtubeLives.status === 'fulfilled' ? youtubeLives.value : [];
+      const mergedStreams = [
+        ...twitchStreams,
+        ...ytLives.map((v: any) => ({
+          id: v.youtubeId || v.id,
+          twitchId: v.youtubeId || v.id,
+          title: v.title,
+          thumbnailUrl: v.thumbnailUrl,
+          viewerCount: v.views || 0,
+          channelName: v.channelName,
+          channelAvatar: v.channelAvatar,
+          gameName: 'YouTube Live',
+          isLive: true,
+          url: v.url,
+        })),
+      ];
+
       return {
         weather,
-        tweets: this.sortByRelevance(tweetsResult, 'tweet'),
-        streams: streams.status === 'fulfilled' ? streams.value : [],
+        tweets: tweetsResult,
+        streams: mergedStreams,
         videos: videos.status === 'fulfilled' ? this.sortByRelevance(videos.value, 'video') : [],
         news: news.status === 'fulfilled' ? this.sortByRelevance(news.value, 'news') : [],
         trump: trumpData,

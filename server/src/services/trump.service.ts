@@ -194,4 +194,8 @@ export class TrumpService {
   }
 }
 
-export const trumpService = new TrumpService();
+export function createTrumpService(): TrumpService {
+  return new TrumpService();
+}
+
+export const trumpService = createTrumpService();

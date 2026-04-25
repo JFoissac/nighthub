@@ -24,21 +24,18 @@ describe('WeatherService', () => {
     it('should return valid forecast data', () => {
       const forecast = service.getForecast()();
       expect(forecast).toBeDefined();
-      expect(forecast).toHaveProperty('temp');
-      expect(forecast).toHaveProperty('condition');
-      expect(forecast).toHaveProperty('wind');
-      expect(forecast).toHaveProperty('humidity');
       expect(forecast).toHaveProperty('city');
+      expect(forecast).toHaveProperty('days');
     });
 
-    it('should have numeric temperature', () => {
+    it('should have array of days', () => {
       const forecast = service.getForecast()();
-      expect(typeof forecast.temp).toBe('number');
+      expect(Array.isArray(forecast.days)).toBe(true);
     });
 
-    it('should have string condition', () => {
+    it('should default city to Caen', () => {
       const forecast = service.getForecast()();
-      expect(typeof forecast.condition).toBe('string');
+      expect(forecast.city).toBe('Caen');
     });
   });
 
@@ -58,9 +55,7 @@ describe('WeatherService', () => {
       service.setCity('Tokyo');
       const newForecast = service.getForecast()();
 
-      expect(newForecast.temp).toBe(originalForecast.temp);
-      expect(newForecast.condition).toBe(originalForecast.condition);
-      expect(newForecast.wind).toBe(originalForecast.wind);
+      expect(newForecast.days).toEqual(originalForecast.days);
     });
   });
 });

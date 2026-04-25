@@ -193,4 +193,8 @@ export class WeatherService {
   }
 }
 
-export const weatherService = new WeatherService();
+export function createWeatherService(): WeatherService {
+  return new WeatherService();
+}
+
+export const weatherService = createWeatherService();

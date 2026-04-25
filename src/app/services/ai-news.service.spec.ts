@@ -40,7 +40,7 @@ describe('AiNewsService', () => {
 
     it('should have valid source values', () => {
       const news = service.getNews()();
-      const validSources = ['claude', 'opencode', 'kimi'];
+      const validSources = ['anthropic', 'openai', 'kimi'];
       news.forEach(item => {
         expect(validSources).toContain(item.source);
       });

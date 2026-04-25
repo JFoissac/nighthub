@@ -33,6 +33,8 @@ async function startServer() {
     app.listen(config.port, () => {
       console.log(`[Server] Running on http://localhost:${config.port}`);
       console.log(`[Environment] ${config.nodeEnv}`);
+      aggregatorService.start();
+      console.log('[Aggregator] Cron jobs started');
     });
   } catch (error) {
     console.error('[Server] Failed to start:', error);

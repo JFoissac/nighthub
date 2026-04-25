@@ -1,0 +1,316 @@
+{
+  "graph": {
+    "nodes": {
+      "nighthub-server": {
+        "name": "nighthub-server",
+        "type": "app",
+        "data": {
+          "root": "server",
+          "name": "nighthub-server",
+          "tags": [
+            "npm:public",
+            "scope:backend",
+            "type:app"
+          ],
+          "metadata": {
+            "targetGroups": {
+              "NPM Scripts": [
+                "dev",
+                "start",
+                "db:migrate",
+                "test:watch",
+                "test:coverage"
+              ]
+            },
+            "description": "NightHub Backend API",
+            "js": {
+              "packageName": "nighthub-server",
+              "packageVersion": "1.0.0",
+              "packageMain": "src/app.ts",
+              "isInPackageManagerWorkspaces": false
+            }
+          },
+          "targets": {
+            "dev": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "dev"
+              },
+              "metadata": {
+                "scriptContent": "ts-node src/app.ts",
+                "runCommand": "npm run dev"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "start": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "start"
+              },
+              "metadata": {
+                "scriptContent": "node dist/app.js",
+                "runCommand": "npm run start"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "db:migrate": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "db:migrate"
+              },
+              "metadata": {
+                "scriptContent": "prisma migrate dev",
+                "runCommand": "npm run db:migrate"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test:watch": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test:watch"
+              },
+              "metadata": {
+                "scriptContent": "vitest",
+                "runCommand": "npm run test:watch"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test:coverage": {
+              "executor": "nx:run-script",
+              "options": {
+                "script": "test:coverage"
+              },
+              "metadata": {
+                "scriptContent": "vitest run --coverage",
+                "runCommand": "npm run test:coverage"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "nx-release-publish": {
+              "executor": "@nx/js:release-publish",
+              "dependsOn": [
+                "^nx-release-publish"
+              ],
+              "options": {},
+              "configurations": {},
+              "parallelism": true
+            },
+            "build": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "tsc -p server/tsconfig.json",
+                "cwd": "."
+              },
+              "outputs": [
+                "{projectRoot}/dist"
+              ],
+              "configurations": {},
+              "parallelism": true
+            },
+            "serve": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "ts-node server/src/app.ts",
+                "cwd": "."
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "test": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "vitest run",
+                "cwd": "server"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "@nx/eslint:lint",
+              "options": {
+                "lintFilePatterns": [
+                  "server/src/**/*.{ts,tsx,js,jsx}"
+                ]
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "inputs": [
+                "default",
+                "{workspaceRoot}/.eslintrc.json",
+                "{workspaceRoot}/.eslintignore",
+                "{workspaceRoot}/eslint.config.mjs"
+              ]
+            },
+            "db:generate": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "prisma generate",
+                "cwd": "server"
+              },
+              "configurations": {},
+              "parallelism": true
+            },
+            "db:push": {
+              "executor": "nx:run-commands",
+              "options": {
+                "command": "prisma db push",
+                "cwd": "server"
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "$schema": "../node_modules/nx/schemas/project-schema.json",
+          "projectType": "application",
+          "sourceRoot": "server/src",
+          "implicitDependencies": []
+        }
+      },
+      "nighthub": {
+        "name": "nighthub",
+        "type": "app",
+        "data": {
+          "root": ".",
+          "name": "nighthub",
+          "includedScripts": [],
+          "tags": [
+            "npm:private",
+            "scope:frontend",
+            "type:app"
+          ],
+          "metadata": {
+            "targetGroups": {},
+            "js": {
+              "packageName": "@nighthub/source",
+              "packageVersion": "0.0.0",
+              "isInPackageManagerWorkspaces": true
+            }
+          },
+          "targets": {
+            "build": {
+              "executor": "@angular/build:application",
+              "outputs": [
+                "{options.outputPath}"
+              ],
+              "options": {
+                "outputPath": "dist/nighthub/browser",
+                "browser": "src/main.ts",
+                "tsConfig": "tsconfig.app.json",
+                "assets": [
+                  "public"
+                ],
+                "index": "src/index.html",
+                "styles": [
+                  "src/styles.css"
+                ]
+              },
+              "configurations": {
+                "production": {
+                  "budgets": [
+                    {
+                      "type": "initial",
+                      "maximumWarning": "500kb",
+                      "maximumError": "2mb"
+                    },
+                    {
+                      "type": "anyComponentStyle",
+                      "maximumWarning": "4kb",
+                      "maximumError": "8kb"
+                    }
+                  ],
+                  "outputHashing": "all"
+                },
+                "development": {
+                  "optimization": false,
+                  "extractLicenses": false,
+                  "sourceMap": true
+                }
+              },
+              "defaultConfiguration": "production",
+              "parallelism": true,
+              "cache": true,
+              "dependsOn": [
+                "^build"
+              ],
+              "inputs": [
+                "production",
+                "^production"
+              ]
+            },
+            "serve": {
+              "continuous": true,
+              "executor": "@angular/build:dev-server",
+              "configurations": {
+                "production": {
+                  "buildTarget": "nighthub:build:production"
+                },
+                "development": {
+                  "buildTarget": "nighthub:build:development"
+                }
+              },
+              "defaultConfiguration": "development",
+              "options": {},
+              "parallelism": true
+            },
+            "lint": {
+              "executor": "@nx/eslint:lint",
+              "options": {
+                "lintFilePatterns": [
+                  "src"
+                ]
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "inputs": [
+                "default",
+                "{workspaceRoot}/.eslintrc.json",
+                "{workspaceRoot}/.eslintignore",
+                "{workspaceRoot}/eslint.config.mjs"
+              ]
+            },
+            "test": {
+              "executor": "@angular/build:unit-test",
+              "options": {
+                "coverage": true
+              },
+              "configurations": {},
+              "parallelism": true,
+              "cache": true,
+              "inputs": [
+                "default",
+                "^production"
+              ]
+            },
+            "serve-static": {
+              "continuous": true,
+              "executor": "@nx/web:file-server",
+              "options": {
+                "buildTarget": "nighthub:build",
+                "staticFilePath": "dist/nighthub/browser",
+                "spa": true
+              },
+              "configurations": {},
+              "parallelism": true
+            }
+          },
+          "$schema": "node_modules/nx/schemas/project-schema.json",
+          "projectType": "application",
+          "prefix": "app",
+          "sourceRoot": "./src",
+          "implicitDependencies": []
+        }
+      }
+    },
+    "dependencies": {
+      "nighthub-server": [],
+      "nighthub": []
+    }
+  }
+}

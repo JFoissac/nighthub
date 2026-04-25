@@ -12,9 +12,9 @@ vi.mock('../db/prisma.client', () => ({
 
 // Mock rss-parser
 vi.mock('rss-parser', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    parseURL: vi.fn().mockResolvedValue({ items: [] }),
-  })),
+  default: function() {
+    return { parseURL: vi.fn().mockResolvedValue({ items: [] }) };
+  } as any,
 }));
 
 import { TrumpService } from './trump.service';
