@@ -196,6 +196,7 @@ export class YoutubeService {
             thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
             channelName,
             channelAvatar: `https://yt3.googleusercontent.com/ytc/${channelId}`,
+            channelId,
             duration: '',
             durationSeconds: 0,
             views,
@@ -301,6 +302,7 @@ export class YoutubeService {
             thumbnailUrl: v.thumbnailUrl,
             channelName: v.channelName,
             channelAvatar: v.channelAvatar,
+            channelId: v.channelId || '',
             duration: v.duration || '',
             url: v.url,
             isNew: v.isNew,
@@ -313,6 +315,7 @@ export class YoutubeService {
             thumbnailUrl: v.thumbnailUrl,
             channelName: v.channelName,
             channelAvatar: v.channelAvatar,
+            channelId: v.channelId || '',
             duration: v.duration || '',
             views: v.views || 0,
             url: v.url,
@@ -329,8 +332,13 @@ export class YoutubeService {
   async getCachedVideos(): Promise<any[]> {
     try {
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const channelIds = await this.getChannelIds();
+      const knownIds = channelIds.filter(Boolean);
       return await prisma.youtubeVideo.findMany({
-        where: { publishedAt: { gte: threeDaysAgo } },
+        where: {
+          publishedAt: { gte: threeDaysAgo },
+          ...(knownIds.length > 0 ? { channelId: { in: [...knownIds, ''] } } : {}),
+        },
         take: 20,
         orderBy: { publishedAt: 'desc' },
       });
