@@ -72,18 +72,26 @@ export class TwitterService {
     return results;
   }
 
-  /** Get aggregated tweets from all configured accounts, sorted by date */
-  async getTimeline(limit: number = 20, onProgress?: (done: number, total: number) => void): Promise<any[]> {
+  private async isCacheStale(maxAgeMinutes = 30): Promise<boolean> {
+    try {
+      const latest = await prisma.tweet.findFirst({ orderBy: { fetchedAt: 'desc' } });
+      if (!latest) return true;
+      return (Date.now() - new Date(latest.fetchedAt).getTime()) > maxAgeMinutes * 60 * 1000;
+    } catch {
+      return true;
+    }
+  }
+
+  /** Scrape Nitter for all accounts and cache results */
+  private async refreshTimeline(): Promise<void> {
     try {
       const accounts = await this.getTwitterAccounts();
-      if (accounts.length === 0) return this.getCachedTweets(limit);
+      if (accounts.length === 0) return;
 
-      // Fetch accounts in batches of 25 to avoid connection pool exhaustion
       const results = await this.batchSettled(
         accounts,
         (username: string) => this.fetchNitterRSS(username),
         25,
-        onProgress,
       );
 
       const all: any[] = [];
@@ -91,18 +99,23 @@ export class TwitterService {
         if (result.status === 'fulfilled') all.push(...result.value);
       }
 
-      if (all.length === 0) return this.getCachedTweets(limit);
+      if (all.length === 0) return;
 
-      // Sort by date descending and take limit
       all.sort((a, b) => new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime());
-      const tweets = all.slice(0, limit);
-
-      await this.cacheTweets(tweets);
-      return tweets;
+      await this.cacheTweets(all.slice(0, 20));
     } catch (e) {
-      console.error('Twitter timeline error:', e);
-      return this.getCachedTweets(limit);
+      console.error('Twitter refresh error:', e);
     }
+  }
+
+  /** Get aggregated tweets from all configured accounts, sorted by date */
+  async getTimeline(limit: number = 20, onProgress?: (done: number, total: number) => void): Promise<any[]> {
+    const cached = await this.getCachedTweets(limit);
+    const stale = await this.isCacheStale(30);
+    if (stale) {
+      setImmediate(() => this.refreshTimeline().catch(console.error));
+    }
+    return cached;
   }
 
   private cleanContent(text: string): string {

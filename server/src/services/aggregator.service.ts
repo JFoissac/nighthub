@@ -134,12 +134,7 @@ export class AggregatorService {
         trumpService.getCachedTrumpTweets(20),
       ]);
 
-      // Twitter is the slow source — report per-batch progress
-      const accountCount = (prefs?.twitterAccounts || '').split(',').filter(Boolean).length;
-      onProgress?.(`Fetching tweets (${accountCount} accounts)...`);
-      const tweetsResult = await twitterService.getTimeline(20, (done, total) => {
-        onProgress?.(`Fetching tweets... ${done}/${total} accounts`);
-      }).catch(() => [] as any[]);
+      const tweetsResult = await twitterService.getTimeline(20).catch(() => [] as any[]);
 
       onProgress?.('Done');
 

@@ -91,6 +91,7 @@ export interface YoutubeVideo {
 
 export interface TweetItem {
   id: string;
+  twitterId?: string;
   authorName: string;
   authorHandle: string;
   authorAvatar: string;
