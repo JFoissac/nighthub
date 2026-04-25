@@ -82,6 +82,7 @@ model YoutubeVideo {
   channelName   String
   channelAvatar String
   channelId     String   @default("")
+  channelHandle String   @default("")
   duration      String
   views         Int      @default(0)
   url           String
@@ -93,6 +94,7 @@ model YoutubeVideo {
   @@index([fetchedAt])
   @@index([publishedAt])
   @@index([channelId])
+  @@index([channelHandle])
 }
 
 model AiNewsItem {

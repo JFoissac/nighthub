@@ -197,6 +197,7 @@ export class YoutubeService {
             channelName,
             channelAvatar: `https://yt3.googleusercontent.com/ytc/${channelId}`,
             channelId,
+            channelHandle: handle,
             duration: '',
             durationSeconds: 0,
             views,
@@ -303,6 +304,7 @@ export class YoutubeService {
             channelName: v.channelName,
             channelAvatar: v.channelAvatar,
             channelId: v.channelId || '',
+            channelHandle: v.channelHandle || '',
             duration: v.duration || '',
             url: v.url,
             isNew: v.isNew,
@@ -316,6 +318,7 @@ export class YoutubeService {
             channelName: v.channelName,
             channelAvatar: v.channelAvatar,
             channelId: v.channelId || '',
+            channelHandle: v.channelHandle || '',
             duration: v.duration || '',
             views: v.views || 0,
             url: v.url,
@@ -332,12 +335,20 @@ export class YoutubeService {
   async getCachedVideos(): Promise<any[]> {
     try {
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-      const channelIds = await this.getChannelIds();
-      const knownIds = channelIds.filter(Boolean);
+      const [channelIds, channelHandles] = await Promise.all([
+        this.getChannelIds(),
+        this.getChannelHandles(),
+      ]);
+
+      if (channelIds.length === 0 && channelHandles.length === 0) return [];
+
       return await prisma.youtubeVideo.findMany({
         where: {
           publishedAt: { gte: threeDaysAgo },
-          ...(knownIds.length > 0 ? { channelId: { in: [...knownIds, ''] } } : {}),
+          OR: [
+            { channelId: { in: [...channelIds, ''] } },
+            ...(channelHandles.length > 0 ? [{ channelHandle: { in: channelHandles } }] : []),
+          ],
         },
         take: 20,
         orderBy: { publishedAt: 'desc' },
