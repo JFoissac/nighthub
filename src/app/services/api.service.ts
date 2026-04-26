@@ -1,4 +1,4 @@
-import { Injectable, NgZone } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, catchError, throwError } from 'rxjs';
 
@@ -39,7 +39,7 @@ export interface UserPreferences {
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  constructor(private http: HttpClient, private ngZone: NgZone) {}
+  constructor(private http: HttpClient) {}
 
   private baseUrl = 'http://localhost:3000/api';
   isLoading = false;
@@ -75,26 +75,20 @@ export class ApiService {
       const es = new EventSource(`${this.baseUrl}/dashboard/stream`);
 
       es.addEventListener('progress', (event: MessageEvent) => {
-        this.ngZone.run(() => {
-          const data = JSON.parse(event.data);
-          onProgress(data.step);
-        });
+        const data = JSON.parse(event.data);
+        onProgress(data.step);
       });
 
       es.addEventListener('dashboard', (event: MessageEvent) => {
-        this.ngZone.run(() => {
-          const data = JSON.parse(event.data);
-          subscriber.next(data);
-          subscriber.complete();
-        });
+        const data = JSON.parse(event.data);
+        subscriber.next(data);
+        subscriber.complete();
         es.close();
       });
 
       es.addEventListener('error', () => {
         es.close();
-        this.ngZone.run(() => {
-          subscriber.error(new Error('SSE connection failed'));
-        });
+        subscriber.error(new Error('SSE connection failed'));
       });
 
       return () => es.close();

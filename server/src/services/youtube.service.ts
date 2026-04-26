@@ -48,6 +48,9 @@ export class YoutubeService {
       } else {
         await this.saveChannelIds([]);
       }
+
+      // Clean orphan channel IDs and their cached videos
+      await this.cleanOrphanChannelIds();
     } catch (e) {
       console.error('Save youtube channels error:', e);
     }
@@ -91,6 +94,48 @@ export class YoutubeService {
         .filter((s: string) => /^UC[a-zA-Z0-9_-]{22}$/.test(s));
     } catch {
       return [];
+    }
+  }
+
+  /**
+   * Remove channel IDs that don't correspond to any current handle.
+   * Also delete cached videos from removed channels.
+   * Call after saveChannelHandles() and at server startup.
+   */
+  async cleanOrphanChannelIds(): Promise<void> {
+    try {
+      const handles = await this.getChannelHandles();
+      if (handles.length === 0) {
+        // No handles = no channels followed, clear everything
+        await this.saveChannelIds([]);
+        await prisma.youtubeVideo.deleteMany({});
+        console.log('[YouTube] No handles configured, cleared all cached videos');
+        return;
+      }
+
+      // Resolve current handles to IDs
+      const resolved = await Promise.all(handles.map(h => this.resolveChannelId(h)));
+      const validIds = resolved.filter((id): id is string => id !== null);
+
+      // Get stored IDs
+      const storedIds = await this.getChannelIds();
+
+      // Find orphan IDs (in stored but not in resolved)
+      const orphanIds = storedIds.filter(id => !validIds.includes(id));
+
+      if (orphanIds.length > 0) {
+        console.log(`[YouTube] Removing ${orphanIds.length} orphan channel IDs:`, orphanIds);
+
+        // Delete cached videos from orphan channels
+        await prisma.youtubeVideo.deleteMany({
+          where: { channelId: { in: orphanIds } },
+        });
+
+        // Update stored IDs to only valid ones
+        await this.saveChannelIds(validIds);
+      }
+    } catch (e) {
+      console.error('[YouTube] Clean orphan channel IDs error:', e);
     }
   }
 
@@ -195,8 +240,12 @@ export class YoutubeService {
       const feedUrl = `${YT_RSS_BASE}?channel_id=${channelId}`;
       const feed = await this.parseRSSWithRetry(feedUrl);
       const channelName = feed.title || handle;
+      const items = feed.items || [];
+      if (items.length > 0) {
+        console.log(`[YouTube] RSS ${channelName} (${channelId}): ${items.length} items, first: "${items[0].title?.substring(0,40)}" pubDate=${items[0].pubDate || items[0].isoDate}`);
+      }
 
-      return (feed.items || [])
+      return items
         .slice(0, 15)
         .map((item: any) => {
           const videoId = item.id?.replace('yt:video:', '') || '';
@@ -447,7 +496,7 @@ export class YoutubeService {
 
       if (channelIds.length === 0 && channelHandles.length === 0) return [];
 
-      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
       const orConditions: any[] = [];
       if (channelIds.length > 0) {
@@ -457,16 +506,22 @@ export class YoutubeService {
         orConditions.push({ channelHandle: { in: channelHandles } });
       }
 
-      return await prisma.youtubeVideo.findMany({
+      const videos = await prisma.youtubeVideo.findMany({
         where: {
-          publishedAt: { gte: threeDaysAgo },
+          publishedAt: { gte: sevenDaysAgo },
           isLive: false,
           ...(orConditions.length > 0 ? { OR: orConditions } : {}),
         },
         take: limit,
         orderBy: { publishedAt: 'desc' },
       });
-    } catch {
+      console.log(`[YouTube] getCachedVideos: ${videos.length} videos (limit=${limit}, window=7d, channelIds=${channelIds.length}, handles=${channelHandles.length})`);
+      if (videos.length > 0) {
+        console.log(`[YouTube] getCachedVideos sample: [0] ${videos[0].channelName} | "${videos[0].title?.substring(0, 40)}" | publishedAt=${videos[0].publishedAt}`);
+      }
+      return videos;
+    } catch (e) {
+      console.error('[YouTube] getCachedVideos error:', e);
       return [];
     }
   }
@@ -501,6 +556,65 @@ export class YoutubeService {
       });
     } catch {
       return [];
+    }
+  }
+
+  /**
+   * Verify which cached live videos are actually still live.
+   * Uses Piped /streams/{videoId} endpoint which returns { livestream: boolean }.
+   * Falls back to YouTube oEmbed if Piped unavailable.
+   * Updates DB: sets isLive = false for ended streams.
+   */
+  async verifyAndCleanLiveStreams(): Promise<void> {
+    const liveVideos = await prisma.youtubeVideo.findMany({
+      where: { isLive: true },
+      select: { youtubeId: true, id: true },
+    });
+
+    if (liveVideos.length === 0) return;
+
+    console.log(`[YouTube] Verifying ${liveVideos.length} live streams...`);
+
+    const instanceUrl = config.piped.instanceUrl;
+
+    for (const video of liveVideos) {
+      try {
+        let stillLive = false;
+
+        if (instanceUrl) {
+          // Piped: /streams/{videoId} returns { livestream: boolean }
+          const url = `${instanceUrl.replace(/\/$/, '')}/streams/${video.youtubeId}`;
+          const res = await fetch(url, {
+            headers: { 'User-Agent': YT_USER_AGENT },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            stillLive = data.livestream === true;
+          }
+        } else {
+          // Fallback: YouTube oEmbed — if video is no longer live,
+          // the title in oEmbed won't contain live keywords
+          const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${video.youtubeId}&format=json`;
+          const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+          if (res.ok) {
+            const data = await res.json();
+            stillLive = this.isLiveStream(data.title || '');
+          }
+          // If oEmbed fails (404 = video removed/private), mark as not live
+        }
+
+        if (!stillLive) {
+          await prisma.youtubeVideo.update({
+            where: { id: video.id },
+            data: { isLive: false },
+          });
+          console.log(`[YouTube] Live ended: ${video.youtubeId}`);
+        }
+      } catch (e) {
+        // On error, leave isLive unchanged (conservative)
+        console.warn(`[YouTube] Failed to verify live status for ${video.youtubeId}:`, e);
+      }
     }
   }
 

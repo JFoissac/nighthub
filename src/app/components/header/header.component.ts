@@ -1,4 +1,4 @@
-import { Component, input, output, OnDestroy, OnInit } from '@angular/core';
+import { Component, input, output, signal, OnDestroy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 @Component({
@@ -11,7 +11,7 @@ import { CommonModule } from '@angular/common';
         <span class="text-xl font-black tracking-tighter text-primary font-headline uppercase">NIGHTHUB</span>
         <div class="hidden lg:flex items-center gap-4 pl-4 border-l border-[#1E1E2E]">
           <!-- Clock -->
-          <span class="font-label-caps text-[10px] text-text-muted">{{ time }}</span>
+          <span class="font-label-caps text-[10px] text-text-muted">{{ time() }}</span>
 
           <!-- Weather compact — clickable -->
           @if (weatherTemp() !== null) {
@@ -25,13 +25,17 @@ import { CommonModule } from '@angular/common';
             </button>
           }
 
-          <!-- Live streams count -->
-          <div class="flex items-center gap-1.5">
+          <!-- Live streams count — clickable -->
+          <button
+            (click)="openStreamList.emit()"
+            class="flex items-center gap-1.5 hover:text-primary transition-colors group"
+            title="Voir les streams en cours"
+          >
             <span class="status-pulse" [class.status-pulse-green]="streamCount() > 0" [class.status-pulse-red]="streamCount() === 0"></span>
-            <span class="font-label-caps text-[10px] text-text-muted">
+            <span class="font-label-caps text-[10px] text-text-muted group-hover:text-primary">
               LIVE: {{ streamCount() }}
             </span>
-          </div>
+          </button>
 
           <!-- Stats -->
           <div class="hidden xl:flex items-center gap-3 pl-3 border-l border-[#1E1E2E]">
@@ -66,7 +70,7 @@ import { CommonModule } from '@angular/common';
   `,
 })
 export class HeaderComponent implements OnInit, OnDestroy {
-  time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  time = signal(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
 
   // Weather data passed from dashboard
   weatherTemp = input<number | null>(null);
@@ -82,17 +86,18 @@ export class HeaderComponent implements OnInit, OnDestroy {
   refresh = output<void>();
   openSettings = output<void>();
   openWeather = output<void>();
+  openStreamList = output<void>();
 
-  private timer: any;
+  private intervalId: any;
 
   ngOnInit() {
-    this.timer = setInterval(() => {
-      this.time = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    this.intervalId = setInterval(() => {
+      this.time.set(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
     }, 1000);
   }
 
   ngOnDestroy() {
-    if (this.timer) clearInterval(this.timer);
+    clearInterval(this.intervalId);
   }
 
   weatherIcon(): string {

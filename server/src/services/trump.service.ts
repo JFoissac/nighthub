@@ -53,6 +53,10 @@ export class TrumpService {
       try {
         const feed = await rssParser.parseURL(url);
         const items = (feed.items || []).slice(0, limit);
+        console.log(`[Trump] RSS ${url}: ${items.length} items raw`);
+        items.slice(0, 3).forEach((item: any, i: number) => {
+          console.log(`  [Trump ${i}] pubDate="${item.pubDate}" title="${item.title?.substring(0,60)}"`);
+        });
         if (items.length === 0) continue;
 
         const analyzed = items.map(item => this.analyzeItem(item));

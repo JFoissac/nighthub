@@ -58,7 +58,12 @@ export class NewsService {
   private async fetchSingleRss(url: string): Promise<any[]> {
     const feed = await rssParser.parseURL(url);
     const domain = new URL(url).hostname.replace('www.', '');
-    return (feed.items || []).slice(0, 8).map((item: any) => ({
+    const items = feed.items || [];
+    console.log(`[News] Custom RSS ${domain}: ${items.length} items`);
+    items.slice(0, 2).forEach((item: any, i: number) => {
+      console.log(`  [${domain} ${i}] "${item.title?.substring(0,50)}" pubDate="${item.pubDate}" isoDate="${item.isoDate}"`);
+    });
+    return items.slice(0, 8).map((item: any) => ({
       title: (item.title || '').substring(0, 255),
       source: domain,
       url: item.link || url,
@@ -71,7 +76,12 @@ export class NewsService {
   /** OpenAI: use official RSS feed */
   private async fetchOpenAI(): Promise<any[]> {
     const feed = await rssParser.parseURL('https://openai.com/news/rss.xml');
-    return (feed.items || []).slice(0, 10).map((item: any) => ({
+    const items = feed.items || [];
+    console.log(`[News] OpenAI RSS: ${items.length} items`);
+    items.slice(0, 3).forEach((item: any, i: number) => {
+      console.log(`  [OpenAI ${i}] title="${item.title?.substring(0,50)}" pubDate="${item.pubDate}" isoDate="${item.isoDate}"`);
+    });
+    return items.slice(0, 10).map((item: any) => ({
       title: item.title || 'OpenAI News',
       source: 'openai',
       url: item.link || 'https://openai.com/news',
@@ -83,6 +93,7 @@ export class NewsService {
 
   /** Anthropic: scrape https://www.anthropic.com/news */
   private async scrapeAnthropic(): Promise<any[]> {
+    console.log('[News] Fetching Anthropic news...');
     const res = await fetch('https://www.anthropic.com/news', { headers: FETCH_HEADERS });
     if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}`);
     const html = await res.text();
@@ -135,6 +146,10 @@ export class NewsService {
       }
     }
 
+    console.log(`[News] Anthropic scraped: ${articles.length} articles`);
+    articles.slice(0, 3).forEach((a, i) => {
+      console.log(`  [Anthropic ${i}] "${a.title?.substring(0,50)}" pubDate="${a.pubDate}"`);
+    });
     return articles.slice(0, 10);
   }
 
@@ -184,6 +199,11 @@ export class NewsService {
         });
       }
     }
+
+    console.log(`[News] Kimi scraped: ${articles.length} articles`);
+    articles.slice(0, 3).forEach((a, i) => {
+      console.log(`  [Kimi ${i}] "${a.title?.substring(0,50)}" pubDate="${a.pubDate}"`);
+    });
 
     // Fallback with known articles if scraping returned nothing
     if (articles.length === 0) {

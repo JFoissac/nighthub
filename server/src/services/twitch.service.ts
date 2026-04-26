@@ -158,8 +158,13 @@ export class TwitchService {
       `, { logins: channels });
 
       const users: any[] = data?.data?.users || [];
-      const liveStreams = users
-        .filter(u => u.stream !== null)
+      console.log(`[Twitch] GQL response: ${users.length} users total`);
+      const liveUsers = users.filter(u => u.stream !== null);
+      console.log(`[Twitch] Live: ${liveUsers.length}/${users.length}`);
+      liveUsers.forEach((u, i) => {
+        console.log(`  [Twitch live ${i}] ${u.displayName} — "${u.stream.title?.substring(0,50)}" — ${u.stream.viewersCount} viewers — game: ${u.stream.game?.name}`);
+      });
+      const liveStreams = liveUsers
         .map(u => ({
           twitchId: u.stream.id,
           title: u.stream.title,

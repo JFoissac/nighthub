@@ -24,6 +24,12 @@ export class AggregatorService {
       this.refreshTwitch();
     });
 
+    // Verify YouTube live stream status every 5 minutes
+    cron.schedule('*/5 * * * *', () => {
+      console.log('[Cron] Verifying YouTube live streams...');
+      youtubeService.verifyAndCleanLiveStreams().catch(console.error);
+    });
+
     // Refresh Trump tweets every 15 minutes
     cron.schedule('*/15 * * * *', () => {
       console.log('[Cron] Refreshing Trump tweets...');
@@ -170,7 +176,7 @@ export class AggregatorService {
         tweets: tweetsResult,
         streams: mergedStreams,
         videos: videos.status === 'fulfilled' ? this.sortByRelevance(videos.value, 'video') : [],
-        news: news.status === 'fulfilled' ? this.sortByRelevance(news.value, 'news') : [],
+        news: news.status === 'fulfilled' ? news.value : [],
         trump: trumpData,
         refreshedAt: new Date(),
       };

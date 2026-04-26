@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.routes';
 import apiRoutes from './routes/api.routes';
 import { prisma } from './db/prisma.client';
 import { aggregatorService } from './services/aggregator.service';
+import { youtubeService } from './services/youtube.service';
 
 const app = express();
 
@@ -27,6 +28,7 @@ async function startServer() {
     await prisma.$connect();
     console.log('[Database] Connected to SQLite');
 
+    youtubeService.cleanOrphanChannelIds().catch(console.error);
     aggregatorService.refreshAll();
     console.log('[Aggregator] Initial data fetch started');
 
