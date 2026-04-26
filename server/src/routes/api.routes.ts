@@ -314,11 +314,22 @@ async function savePreferences(req: Request, res: Response) {
     const body = (req as any).validatedBody as z.infer<typeof preferencesSchema>;
 
     const data: Record<string, any> = {};
+    let handledYoutubeChannels = false;
+
     if (typeof body.weatherCity === 'string') data.weatherCity = body.weatherCity.substring(0, 50);
     if (typeof body.twitchFollows === 'string') data.twitchFollows = body.twitchFollows.substring(0, 10000);
     if (typeof body.twitchUsername === 'string') data.twitchUsername = body.twitchUsername.substring(0, 50);
-    if (typeof body.youtubeChannels === 'string') data.youtubeChannels = body.youtubeChannels.substring(0, 10000);
-    if (typeof body.youtubeChannelIds === 'string') data.youtubeChannelIds = body.youtubeChannelIds.substring(0, 50000);
+    if (typeof body.youtubeChannels === 'string') {
+      const handles = body.youtubeChannels
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      await youtubeService.saveChannelHandles(handles);
+      handledYoutubeChannels = true;
+    }
+    if (typeof body.youtubeChannelIds === 'string' && !handledYoutubeChannels) {
+      data.youtubeChannelIds = body.youtubeChannelIds.substring(0, 50000);
+    }
     if (typeof body.twitterUsername === 'string') data.twitterUsername = body.twitterUsername.substring(0, 100);
     if (typeof body.twitterAccounts === 'string') data.twitterAccounts = body.twitterAccounts.substring(0, 50000);
     if (typeof body.trumpMinCriticality === 'number') data.trumpMinCriticality = Math.max(0, Math.min(10, body.trumpMinCriticality));

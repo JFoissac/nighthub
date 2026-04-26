@@ -14,6 +14,10 @@ const YT_RSS_BASE = 'https://www.youtube.com/feeds/videos.xml';
 const YT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 export class YoutubeService {
+  private lastLiveSyncAt = 0;
+  private liveSyncInFlight: Promise<void> | null = null;
+  private static readonly LIVE_SYNC_TTL_MS = 2 * 60 * 1000;
+
   /** Get saved channel handles from preferences */
   async getChannelHandles(): Promise<string[]> {
     try {
@@ -245,7 +249,7 @@ export class YoutubeService {
         console.log(`[YouTube] RSS ${channelName} (${channelId}): ${items.length} items, first: "${items[0].title?.substring(0,40)}" pubDate=${items[0].pubDate || items[0].isoDate}`);
       }
 
-      return items
+      const mapped = items
         .slice(0, 15)
         .map((item: any) => {
           const videoId = item.id?.replace('yt:video:', '') || '';
@@ -273,10 +277,32 @@ export class YoutubeService {
             publishedAt: pubDate,
           };
         });
+      await this.enrichLiveStatus(mapped);
+      return mapped;
     } catch (e) {
       console.error(`YouTube RSS error for ${handle}:`, e);
       return [];
     }
+  }
+
+  /**
+   * Improve live detection for very recent uploads whose title does not include
+   * explicit live keywords.
+   */
+  private async enrichLiveStatus(videos: any[]): Promise<void> {
+    const candidates = videos
+      .filter((v: any) => !v.isLive && this.isRecent(v.publishedAt))
+      .slice(0, 3);
+
+    if (candidates.length === 0) return;
+
+    await Promise.all(candidates.map(async (video: any) => {
+      const live = await this.isVideoCurrentlyLive(video.youtubeId);
+      if (live) {
+        video.isLive = true;
+        video.isNew = false;
+      }
+    }));
   }
 
   private async parseRSSWithRetry(url: string): Promise<any> {
@@ -528,6 +554,8 @@ export class YoutubeService {
 
   async getCachedLiveStreams(limit: number = 20): Promise<any[]> {
     try {
+      await this.syncLiveCacheIfNeeded();
+
       const [channelIds, channelHandles] = await Promise.all([
         this.getChannelIds(),
         this.getChannelHandles(),
@@ -559,6 +587,30 @@ export class YoutubeService {
     }
   }
 
+  private async syncLiveCacheIfNeeded(force = false): Promise<void> {
+    const now = Date.now();
+    if (!force && now - this.lastLiveSyncAt < YoutubeService.LIVE_SYNC_TTL_MS) {
+      return;
+    }
+
+    if (this.liveSyncInFlight) {
+      await this.liveSyncInFlight;
+      return;
+    }
+
+    this.liveSyncInFlight = (async () => {
+      await this.fetchAndCacheLatestVideos();
+      await this.verifyAndCleanLiveStreams();
+      this.lastLiveSyncAt = Date.now();
+    })();
+
+    try {
+      await this.liveSyncInFlight;
+    } finally {
+      this.liveSyncInFlight = null;
+    }
+  }
+
   /**
    * Verify which cached live videos are actually still live.
    * Uses Piped /streams/{videoId} endpoint which returns { livestream: boolean }.
@@ -575,34 +627,9 @@ export class YoutubeService {
 
     console.log(`[YouTube] Verifying ${liveVideos.length} live streams...`);
 
-    const instanceUrl = config.piped.instanceUrl;
-
     for (const video of liveVideos) {
       try {
-        let stillLive = false;
-
-        if (instanceUrl) {
-          // Piped: /streams/{videoId} returns { livestream: boolean }
-          const url = `${instanceUrl.replace(/\/$/, '')}/streams/${video.youtubeId}`;
-          const res = await fetch(url, {
-            headers: { 'User-Agent': YT_USER_AGENT },
-            signal: AbortSignal.timeout(5000),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            stillLive = data.livestream === true;
-          }
-        } else {
-          // Fallback: YouTube oEmbed — if video is no longer live,
-          // the title in oEmbed won't contain live keywords
-          const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${video.youtubeId}&format=json`;
-          const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-          if (res.ok) {
-            const data = await res.json();
-            stillLive = this.isLiveStream(data.title || '');
-          }
-          // If oEmbed fails (404 = video removed/private), mark as not live
-        }
+        const stillLive = await this.isVideoCurrentlyLive(video.youtubeId);
 
         if (!stillLive) {
           await prisma.youtubeVideo.update({
@@ -615,6 +642,46 @@ export class YoutubeService {
         // On error, leave isLive unchanged (conservative)
         console.warn(`[YouTube] Failed to verify live status for ${video.youtubeId}:`, e);
       }
+    }
+  }
+
+  /**
+   * Check current live status from Piped when available, then YouTube watch page fallback.
+   */
+  private async isVideoCurrentlyLive(videoId: string): Promise<boolean> {
+    const instanceUrl = config.piped.instanceUrl;
+    let pipedLive: boolean | null = null;
+
+    if (instanceUrl) {
+      try {
+        const pipedUrl = `${instanceUrl.replace(/\/$/, '')}/streams/${videoId}`;
+        const pipedRes = await fetch(pipedUrl, {
+          headers: { 'User-Agent': YT_USER_AGENT },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (pipedRes.ok) {
+          const data = await pipedRes.json();
+          if (typeof data?.livestream === 'boolean') {
+            pipedLive = data.livestream;
+          }
+        }
+      } catch {
+        // Fall through to YouTube watch page fallback.
+      }
+    }
+
+    try {
+      const ytUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const ytRes = await fetch(ytUrl, {
+        headers: { 'User-Agent': YT_USER_AGENT },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!ytRes.ok) return pipedLive ?? false;
+      const html = await ytRes.text();
+      // If YouTube watch page is reachable, trust its explicit live-now signal.
+      return html.includes('"isLiveNow":true');
+    } catch {
+      return pipedLive ?? false;
     }
   }
 

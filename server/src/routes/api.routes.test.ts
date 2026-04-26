@@ -536,5 +536,40 @@ describe('API Routes', () => {
       await handler(req, res);
       expect(prisma.userPreference.create).toHaveBeenCalled();
     });
+
+    it('reconciles youtube channel IDs when youtubeChannels is provided', async () => {
+      const handler = getHandler('/preferences', 'post');
+      const res = mockRes();
+      const req = { body: { youtubeChannels: '@foo,@bar', youtubeChannelIds: 'UCstale' } } as any;
+      (prisma.userPreference.findFirst as any).mockResolvedValue({ id: 'pref1' });
+
+      await handler(req, res);
+
+      expect(youtubeService.saveChannelHandles).toHaveBeenCalledWith(['@foo', '@bar']);
+      expect(prisma.userPreference.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'pref1' },
+          data: expect.not.objectContaining({ youtubeChannelIds: expect.any(String) }),
+        })
+      );
+      expect(res.json).toHaveBeenCalledWith({ success: true });
+    });
+
+    it('keeps direct youtubeChannelIds update when youtubeChannels is absent', async () => {
+      const handler = getHandler('/preferences', 'post');
+      const res = mockRes();
+      const req = { body: { youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb' } } as any;
+      (prisma.userPreference.findFirst as any).mockResolvedValue({ id: 'pref1' });
+
+      await handler(req, res);
+
+      expect(youtubeService.saveChannelHandles).not.toHaveBeenCalled();
+      expect(prisma.userPreference.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'pref1' },
+          data: expect.objectContaining({ youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb' }),
+        })
+      );
+    });
   });
 });

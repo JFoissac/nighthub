@@ -10,6 +10,7 @@ vi.mock('../db/prisma.client', () => ({
     youtubeVideo: {
       findMany: vi.fn().mockResolvedValue([]),
       upsert: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
     },
   },
 }));
@@ -192,6 +193,49 @@ describe('YoutubeService', () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue({});
       expect(await service.getCachedVideos()).toEqual([]);
+    });
+  });
+
+  describe('getCachedLiveStreams', () => {
+    it('syncs live cache before querying live streams', async () => {
+      const { prisma } = await import('../db/prisma.client');
+      vi.spyOn(service, 'fetchAndCacheLatestVideos').mockResolvedValue();
+      vi.spyOn(service, 'verifyAndCleanLiveStreams').mockResolvedValue();
+
+      (prisma.userPreference.findFirst as any)
+        .mockResolvedValueOnce({ youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb' })
+        .mockResolvedValueOnce({ youtubeChannels: '@foo' });
+      (prisma.youtubeVideo.findMany as any).mockResolvedValueOnce([{ youtubeId: 'live1' }]);
+
+      const lives = await service.getCachedLiveStreams(10);
+
+      expect(service.fetchAndCacheLatestVideos).toHaveBeenCalledTimes(1);
+      expect(service.verifyAndCleanLiveStreams).toHaveBeenCalledTimes(1);
+      expect(lives).toEqual([{ youtubeId: 'live1' }]);
+      expect(prisma.youtubeVideo.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isLive: true }),
+          take: 10,
+        })
+      );
+    });
+
+    it('uses TTL to avoid re-syncing on immediate subsequent calls', async () => {
+      const { prisma } = await import('../db/prisma.client');
+      vi.spyOn(service, 'fetchAndCacheLatestVideos').mockResolvedValue();
+      vi.spyOn(service, 'verifyAndCleanLiveStreams').mockResolvedValue();
+
+      (prisma.userPreference.findFirst as any)
+        .mockResolvedValue({ youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb', youtubeChannels: '@foo' });
+      (prisma.youtubeVideo.findMany as any)
+        .mockResolvedValueOnce([{ youtubeId: 'live1' }])
+        .mockResolvedValueOnce([{ youtubeId: 'live1' }]);
+
+      await service.getCachedLiveStreams(10);
+      await service.getCachedLiveStreams(10);
+
+      expect(service.fetchAndCacheLatestVideos).toHaveBeenCalledTimes(1);
+      expect(service.verifyAndCleanLiveStreams).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -385,6 +429,59 @@ describe('YoutubeService', () => {
       expect(result.get('vid1')).toBe('PT10M30S');
 
       process.env.YOUTUBE_API_KEY = oldKey;
+    });
+  });
+
+  describe('isVideoCurrentlyLive fallback behavior', () => {
+    it('does not treat archived livestreams as live when YouTube watch page has isLiveContent only', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ livestream: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () => '<html>{"isLiveContent":true,"isLiveNow":false}</html>',
+        });
+      vi.stubGlobal('fetch', fetchMock);
+
+      // @ts-ignore
+      const live = await service.isVideoCurrentlyLive('vid1');
+      expect(live).toBe(false);
+    });
+
+    it('prefers YouTube live-now signal when Piped reports false', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ livestream: false }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () => '<html>{"isLiveNow":true}</html>',
+        });
+      vi.stubGlobal('fetch', fetchMock);
+
+      // @ts-ignore
+      const live = await service.isVideoCurrentlyLive('vid2');
+      expect(live).toBe(true);
+    });
+
+    it('trusts YouTube watch page over stale Piped true', async () => {
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ livestream: true }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          text: async () => '<html>{"isLiveNow":false}</html>',
+        });
+      vi.stubGlobal('fetch', fetchMock);
+
+      // @ts-ignore
+      const live = await service.isVideoCurrentlyLive('vid3');
+      expect(live).toBe(false);
     });
   });
 });
