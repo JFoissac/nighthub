@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+          tailwind.config = {
+            darkMode: "class",
+            theme: {
+              extend: {
+                "colors": {
+                        "tertiary-fixed": "#ffdcc5",
+                        "on-error": "#690005",
+                        "tertiary-container": "#d97721",
+                        "inverse-on-surface": "#303036",
+                        "on-tertiary-container": "#452000",
+                        "primary-fixed-dim": "#c0c1ff",
+                        "surface-tint": "#c0c1ff",
+                        "primary": "#c0c1ff",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#e1e0ff",
+                        "surface-container-high": "#2a292f",
+                        "secondary-fixed-dim": "#2fd9f4",
+                        "on-surface": "#e4e1e9",
+                        "on-primary": "#1000a9",
+                        "surface-bright": "#39383e",
+                        "on-primary-fixed": "#07006c",
+                        "secondary": "#5de6ff",
+                        "on-secondary-fixed": "#001f25",
+                        "surface-container-highest": "#35343a",
+                        "on-surface-variant": "#c7c4d7",
+                        "background": "#0A0A0F",
+                        "secondary-fixed": "#a2eeff",
+                        "outline": "#908fa0",
+                        "inverse-primary": "#494bd6",
+                        "on-tertiary-fixed-variant": "#703700",
+                        "on-secondary": "#00363e",
+                        "tertiary": "#ffb783",
+                        "surface-container": "#12121A",
+                        "on-error-container": "#ffdad6",
+                        "surface-variant": "#35343a",
+                        "on-secondary-fixed-variant": "#004e5a",
+                        "on-background": "#e4e1e9",
+                        "secondary-container": "#00cbe6",
+                        "surface-dim": "#131318",
+                        "error-container": "#93000a",
+                        "tertiary-fixed-dim": "#ffb783",
+                        "outline-variant": "#1E1E2E",
+                        "on-primary-fixed-variant": "#2f2ebe",
+                        "surface-container-lowest": "#0e0e13",
+                        "on-tertiary": "#4f2500",
+                        "primary-container": "#8083ff",
+                        "surface": "#131318",
+                        "on-tertiary-fixed": "#301400",
+                        "surface-container-low": "#1b1b20",
+                        "on-primary-container": "#0d0096",
+                        "on-secondary-container": "#00515d",
+                        "inverse-surface": "#e4e1e9"
+                },
+                "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                },
+                "spacing": {
+                        "base": "4px",
+                        "margin": "32px",
+                        "sm": "8px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "xs": "4px",
+                        "xl": "40px",
+                        "gutter": "20px"
+                },
+                "fontFamily": {
+                        "body-lg": ["Inter"],
+                        "h2": ["Space Grotesk"],
+                        "h3": ["Space Grotesk"],
+                        "h1": ["Space Grotesk"],
+                        "body-md": ["Inter"],
+                        "label-caps": ["JetBrains Mono"],
+                        "mono-code": ["JetBrains Mono"],
+                        "body-sm": ["Inter"]
+                },
+                "fontSize": {
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "h2": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                        "h3": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                        "h1": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "600"}],
+                        "mono-code": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "body-sm": ["14px", {"lineHeight": "1.4", "fontWeight": "400"}]
+                }
+              },
+            },
+          }
+        </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+        }
+        .neo-glass {
+            background: rgba(18, 18, 26, 0.7);
+            backdrop-filter: blur(8px);
+            border: 1px solid #1E1E2E;
+        }
+        .status-pulse {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #6366F1;
+            box-shadow: 0 0 8px #6366F1;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.5); opacity: 0.5; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #1E1E2E; }
+        ::-webkit-scrollbar-thumb { background: #6366F1; border-radius: 2px; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md overflow-x-hidden">
+<!-- TopAppBar Shell -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-4 h-12 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
+<div class="flex items-center gap-8">
+<span class="text-xl font-black tracking-tighter text-indigo-500 font-['Space_Grotesk'] uppercase">NIGHTHUB</span>
+<!-- Compact Status Indicators -->
+<div class="hidden lg:flex items-center gap-6">
+<div class="flex items-center gap-2 px-3 py-1 border-r border-slate-800">
+<span class="material-symbols-outlined text-indigo-400 text-sm">cloud</span>
+<span class="font-label-caps text-[10px] text-slate-400">14°C PARIS</span>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5">
+<div class="status-pulse bg-red-500 shadow-red-500"></div>
+<span class="font-label-caps text-[10px] text-slate-400 uppercase">Live: 1.2k</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-indigo-400 text-sm">monitoring</span>
+<span class="font-label-caps text-[10px] text-slate-400 uppercase">Signals: Active</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-indigo-400 text-sm">rss_feed</span>
+<span class="font-label-caps text-[10px] text-slate-400 uppercase">News: +14</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden md:block">
+<span class="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate-500 text-sm">search</span>
+<input class="bg-slate-900/50 border border-slate-800 rounded px-8 py-1 text-[10px] font-label-caps focus:outline-none focus:border-indigo-500 transition-all w-48" placeholder="TERMINAL SEARCH..." type="text"/>
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 hover:bg-indigo-500/10 text-slate-400 transition-all rounded active:scale-95">
+<span class="material-symbols-outlined text-xl">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Main Canvas -->
+<main class="pt-12 min-h-screen">
+<div class="p-6 max-w-screen-2xl mx-auto space-y-8">
+<!-- Two Column Top Section: X/Twitter & YouTube -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- Priority 1: Latest @X Feeds (Left Column) -->
+<section class="lg:col-span-5 neo-glass rounded overflow-hidden flex flex-col">
+<div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-white text-sm">terminal</span>
+<h2 class="font-label-caps text-[11px] tracking-widest uppercase">LATEST @X (TWITTER)</h2>
+</div>
+<a class="text-[9px] font-label-caps text-slate-500 hover:text-white transition-colors" href="#">REFRESH</a>
+</div>
+<div class="flex-1">
+<!-- Tweet 1 -->
+<div class="flex gap-3 p-4 border-b border-slate-800/50 hover:bg-white/5 transition-colors group">
+<div class="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 overflow-hidden border border-slate-700">
+<img alt="avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEJ7_QKOb_y7OGc_R9dwXuENZrw5UkOc2y3pRLsZ4YVcVMrI29DcKsvkrcp0VoQb11_Zhf2blNyiF71zjTUC7rLjVGU4LPZRliXGCn2JniofFl2aEBcZC0Aq7mDFLj9rk1gky9LiQhtjoDZUfyW2cg3zGITiPr3JNjZ_wW5Z70iSCDa0OWfIlQUj6QoZHKFYlX0vITRI3Sz4Q9Z6vQ7Oy8-5uESs5TOgX5TKq3BV14xnNNBx3sw8v7z8cqg7Qy4c0isLdMjFXdgz0"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-bold text-[11px] text-white">@TechCrunch</span>
+<span class="text-slate-600 text-[10px]">12m</span>
+</div>
+<a class="text-slate-500 hover:text-indigo-400 transition-colors" href="https://x.com" target="_blank">
+<span class="material-symbols-outlined text-sm">reply</span>
+</a>
+</div>
+<p class="text-body-sm text-slate-300 mt-0.5 leading-snug">OpenAI announces new multi-modal model capable of realtime voice synthesis with &lt; 20ms latency.</p>
+</div>
+</div>
+<!-- Tweet 2 -->
+<div class="flex gap-3 p-4 border-b border-slate-800/50 hover:bg-white/5 transition-colors group">
+<div class="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 overflow-hidden border border-slate-700">
+<img alt="avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABagRVVwjTAsQqZlr0i_V_fm4HnIegOt4JPsx5xyawkwoI_Au6UlD25Ln9HP5sNNh9zJoazNwLvK-pmQUtf-ytsIfe_YZnXFLPFINeKANNAX8kvclXc6fRFiZ6_GgBazH3mzXKg5sJzo0Valb2rzfYVQXitA6QVNzmSA3X__lOcG3_hZEB5mKQ_PLl_HjwCFGxylu5F9EVuW2JirUjfoACdGqxCTZyIVS5xA_GVUueKzvqq408TYspwyZ_eUfidclXgDDTy-5M0_s"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-bold text-[11px] text-white">@TheVerge</span>
+<span class="text-slate-600 text-[10px]">28m</span>
+</div>
+<a class="text-slate-500 hover:text-indigo-400 transition-colors" href="https://x.com" target="_blank">
+<span class="material-symbols-outlined text-sm">reply</span>
+</a>
+</div>
+<p class="text-body-sm text-slate-300 mt-0.5 leading-snug">SpaceX successfully lands third stage booster in high-wind conditions.</p>
+</div>
+</div>
+<!-- Tweet 3 -->
+<div class="flex gap-3 p-4 hover:bg-white/5 transition-colors group">
+<div class="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 overflow-hidden border border-slate-700">
+<img alt="avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBzSJC2CuZdK379RKgRfUbE-P2diJ7Tn6PsFNO_UHJw2cpaC2jyTwYi3xT-l7og_szxSKO9YJgN0fLsM2SQDWxeGVRzOu6o-QKNUM85sEZHxssAuLsycQHJcMv6F2aCAgi5s_WRp0jHFWZ_wEa560fQBIMM8AJrN9x1OphckXKYvozysPobWZTK90osaBTTSW3IRINx8cp4SDIGScZndhsOKSt5S4b_NwR194H6LweyMVV5WdrwS2LmAxSVi8QYM_MN-OJOqyJLqR0"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-bold text-[11px] text-white">@NightHub_HQ</span>
+<span class="text-slate-600 text-[10px]">1h</span>
+</div>
+<a class="text-slate-500 hover:text-indigo-400 transition-colors" href="https://x.com" target="_blank">
+<span class="material-symbols-outlined text-sm">reply</span>
+</a>
+</div>
+<p class="text-body-sm text-slate-300 mt-0.5 leading-snug">System update v2.0.4 is now live. Check the Terminal section for full changelog.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- YouTube Recaps (Right Column) -->
+<section class="lg:col-span-7 neo-glass rounded overflow-hidden flex flex-col">
+<div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/40">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-red-500 text-sm">smart_display</span>
+<h2 class="font-label-caps text-[11px] tracking-widest uppercase">YOUTUBE RECAPS</h2>
+</div>
+<a class="text-[9px] font-label-caps text-slate-500 hover:text-white transition-colors" href="#">LATEST</a>
+</div>
+<div class="p-4 grid grid-cols-1 gap-4 overflow-y-auto max-h-[300px] lg:max-h-full">
+<div class="flex gap-4 group cursor-pointer border-b border-slate-800/50 pb-4">
+<div class="w-32 h-20 bg-slate-800 rounded overflow-hidden flex-shrink-0 border border-slate-700">
+<img alt="Hardware monitor" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAKkrZSnQCdWlIJHz1d_oBiylcP31yYlSouco0Ud8hO_WMvpyaI4mO3W5Xjo58CBTd2W93SVx4X2soF6jdHA6MYmIfNStmNV82h2bp_ho9CGKq3J2srWwLRubeUmfM_rA81u2-_M0xjYYHYK6DCW17gFK4J03FWFdzDsBbWR-z9yujXwRJqL22tyXoGeAx0qkVAc77vt13ENO-euOjyDh9N1qSsIYW0nIT8ouyvG0QgdbhPCms9ahuXA3QYv3J8j5kuIlGou8KasjA"/>
+</div>
+<div>
+<h4 class="text-body-sm font-medium group-hover:text-indigo-400 transition-colors line-clamp-2">Modern Hardware: The Death of Silicon?</h4>
+<div class="text-[9px] text-slate-500 mt-1">4h ago • 25k views • Tech Analysis</div>
+</div>
+</div>
+<div class="flex gap-4 group cursor-pointer">
+<div class="w-32 h-20 bg-slate-800 rounded overflow-hidden flex-shrink-0 border border-slate-700">
+<img alt="Programmer" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpCEzA760jy8SKyR-1pceGstON8eSRfvOutXobtbtzF0qHOpNNrrpwIJ6KbjriGs8GguZmw868NmLO6m5wvjCO2ApotIG160SmfMFID8tJD3gmnj5n9QLoB_19ivqXkXnU-gNkPqEUH7qmtx3VnVyswGYwbPf8oS9Yt2VOulXS4MWcaOH2TH6ao6jOqLZvK2whz2aIqb6fuh-RuE6mESvcWwqiN2huddElMyGmf4PliX4yc0a2TQNp-Ah20a1xsO_guhTO9icKsR4"/>
+</div>
+<div>
+<h4 class="text-body-sm font-medium group-hover:text-indigo-400 transition-colors line-clamp-2">How AI is rewriting kernel security</h4>
+<div class="text-[9px] text-slate-500 mt-1">12h ago • 142k views • CyberSec</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Priority 2: Twitch Live Streams -->
+<section class="space-y-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary">videocam</span>
+<h3 class="font-label-caps text-[11px] text-on-surface tracking-widest uppercase">TWITCH LIVE STREAMS</h3>
+</div>
+<a class="text-[10px] font-label-caps text-indigo-400 hover:underline" href="#">VIEW ALL</a>
+</div>
+<div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+<!-- Stream Cards -->
+<div class="min-w-[240px] group cursor-pointer">
+<div class="relative aspect-video rounded overflow-hidden mb-2 border border-slate-800 group-hover:border-indigo-500 transition-colors">
+<img alt="eSports player" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEJ7_QKOb_y7OGc_R9dwXuENZrw5UkOc2y3pRLsZ4YVcVMrI29DcKsvkrcp0VoQb11_Zhf2blNyiF71zjTUC7rLjVGU4LPZRliXGCn2JniofFl2aEBcZC0Aq7mDFLj9rk1gky9LiQhtjoDZUfyW2cg3zGITiPr3JNjZ_wW5Z70iSCDa0OWfIlQUj6QoZHKFYlX0vITRI3Sz4Q9Z6vQ7Oy8-5uESs5TOgX5TKq3BV14xnNNBx3sw8v7z8cqg7Qy4c0isLdMjFXdgz0"/>
+<div class="absolute top-2 left-2 px-1.5 py-0.5 bg-red-600 text-[8px] font-bold rounded text-white">LIVE</div>
+<div class="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/60 text-[8px] font-bold rounded text-white backdrop-blur">12.4k CCV</div>
+</div>
+<div class="text-[10px] font-bold truncate uppercase tracking-wider">CODE_RUNNER_2077</div>
+<div class="text-[9px] text-slate-500 truncate uppercase">REFACTORING THE MATRIX</div>
+</div>
+<div class="min-w-[240px] group cursor-pointer">
+<div class="relative aspect-video rounded overflow-hidden mb-2 border border-slate-800 group-hover:border-indigo-500 transition-colors">
+<img alt="Hardware" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABagRVVwjTAsQqZlr0i_V_fm4HnIegOt4JPsx5xyawkwoI_Au6UlD25Ln9HP5sNNh9zJoazNwLvK-pmQUtf-ytsIfe_YZnXFLPFINeKANNAX8kvclXc6fRFiZ6_GgBazH3mzXKg5sJzo0Valb2rzfYVQXitA6QVNzmSA3X__lOcG3_hZEB5mKQ_PLl_HjwCFGxylu5F9EVuW2JirUjfoACdGqxCTZyIVS5xA_GVUueKzvqq408TYspwyZ_eUfidclXgDDTy-5M0_s"/>
+<div class="absolute top-2 left-2 px-1.5 py-0.5 bg-red-600 text-[8px] font-bold rounded text-white">LIVE</div>
+<div class="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/60 text-[8px] font-bold rounded text-white backdrop-blur">4.1k CCV</div>
+</div>
+<div class="text-[10px] font-bold truncate uppercase tracking-wider">HARDWARE_LABS</div>
+<div class="text-[9px] text-slate-500 truncate uppercase">4090 TI OVERCLOCK TEST</div>
+</div>
+<div class="min-w-[240px] group cursor-pointer">
+<div class="relative aspect-video rounded overflow-hidden mb-2 border border-slate-800 group-hover:border-indigo-500 transition-colors">
+<img alt="Keyboard" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBzSJC2CuZdK379RKgRfUbE-P2diJ7Tn6PsFNO_UHJw2cpaC2jyTwYi3xT-l7og_szxSKO9YJgN0fLsM2SQDWxeGVRzOu6o-QKNUM85sEZHxssAuLsycQHJcMv6F2aCAgi5s_WRp0jHFWZ_wEa560fQBIMM8AJrN9x1OphckXKYvozysPobWZTK90osaBTTSW3IRINx8cp4SDIGScZndhsOKSt5S4b_NwR194H6LweyMVV5WdrwS2LmAxSVi8QYM_MN-OJOqyJLqR0"/>
+<div class="absolute top-2 left-2 px-1.5 py-0.5 bg-red-600 text-[8px] font-bold rounded text-white">LIVE</div>
+<div class="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/60 text-[8px] font-bold rounded text-white backdrop-blur">890 CCV</div>
+</div>
+<div class="text-[10px] font-bold truncate uppercase tracking-wider">SYSTEM_ADMIN_X</div>
+<div class="text-[9px] text-slate-500 truncate uppercase">LATE NIGHT LOG AUDIT</div>
+</div>
+<div class="min-w-[240px] group cursor-pointer">
+<div class="relative aspect-video rounded overflow-hidden mb-2 border border-slate-800 group-hover:border-indigo-500 transition-colors">
+<img alt="Neon city" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCvx-oz5dQGD-ekTVOUnJrxy2oncOlVzT-4u8cf4CwZw6CLWeyoxDjaHmxehpCWewZOBC0UNvx9R2SvJyy1nDAsuj-50XiBi5NlQ54cTApe-XhfgPWbMbrLdwO3f4JYDE7IfqR9LMXUikMfTKhWvUQle5n8TTUoCCoE1lJafq8QWYRX9KC6Jhyz_ly5uU0Dka4M5Pn8YUbkLAWalQDiNX3A92SyRGxVpzIzrbFLCPjobislJJGaz8XG7CDipy4_WnVm6nWRWVzgfr8"/>
+<div class="absolute top-2 left-2 px-1.5 py-0.5 bg-red-600 text-[8px] font-bold rounded text-white">LIVE</div>
+<div class="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/60 text-[8px] font-bold rounded text-white backdrop-blur">2.3k CCV</div>
+</div>
+<div class="text-[10px] font-bold truncate uppercase tracking-wider">NEON_WALKER</div>
+<div class="text-[9px] text-slate-500 truncate uppercase">SHIBUYA REALTIME FEED</div>
+</div>
+</div>
+</section>
+<!-- Priority 4 & 5: AI News & Trump Watch (Grid Layout) -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+<!-- AI INTELLIGENCE -->
+<section class="lg:col-span-8 neo-glass rounded overflow-hidden flex flex-col">
+<div class="px-4 py-3 border-b border-slate-800 flex justify-between items-center bg-indigo-500/5">
+<div class="flex items-center gap-2">
+<span class="status-pulse"></span>
+<h2 class="font-label-caps text-[11px] text-indigo-400 tracking-widest uppercase">AI INTELLIGENCE REALTIME</h2>
+</div>
+<span class="font-mono-code text-[10px] text-slate-500">UPTIME: 99.98%</span>
+</div>
+<div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+<div class="flex flex-col">
+<!-- Intelligence Feed 1 -->
+<div class="flex gap-3 p-4 border-b border-slate-800/50 hover:bg-white/5 transition-colors group">
+<div class="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 overflow-hidden border border-slate-700">
+<img alt="avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAEJ7_QKOb_y7OGc_R9dwXuENZrw5UkOc2y3pRLsZ4YVcVMrI29DcKsvkrcp0VoQb11_Zhf2blNyiF71zjTUC7rLjVGU4LPZRliXGCn2JniofFl2aEBcZC0Aq7mDFLj9rk1gky9LiQhtjoDZUfyW2cg3zGITiPr3JNjZ_wW5Z70iSCDa0OWfIlQUj6QoZHKFYlX0vITRI3Sz4Q9Z6vQ7Oy8-5uESs5TOgX5TKq3BV14xnNNBx3sw8v7z8cqg7Qy4c0isLdMjFXdgz0"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-bold text-[11px] text-white">@TechCrunch</span>
+<span class="text-slate-600 text-[10px]">12m</span>
+</div>
+<span class="material-symbols-outlined text-sm text-slate-600">bolt</span>
+</div>
+<p class="text-body-sm text-slate-300 mt-0.5 leading-snug">OpenAI announces new multi-modal model capable of realtime voice synthesis.</p>
+</div>
+</div>
+<!-- Intelligence Feed 2 -->
+<div class="flex gap-3 p-4 border-b border-slate-800/50 hover:bg-white/5 transition-colors group">
+<div class="w-8 h-8 rounded-full bg-slate-800 flex-shrink-0 overflow-hidden border border-slate-700">
+<img alt="avatar" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuABagRVVwjTAsQqZlr0i_V_fm4HnIegOt4JPsx5xyawkwoI_Au6UlD25Ln9HP5sNNh9zJoazNwLvK-pmQUtf-ytsIfe_YZnXFLPFINeKANNAX8kvclXc6fRFiZ6_GgBazH3mzXKg5sJzo0Valb2rzfYVQXitA6QVNzmSA3X__lOcG3_hZEB5mKQ_PLl_HjwCFGxylu5F9EVuW2JirUjfoACdGqxCTZyIVS5xA_GVUueKzvqq408TYspwyZ_eUfidclXgDDTy-5M0_s"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="font-bold text-[11px] text-white">@TheVerge</span>
+<span class="text-slate-600 text-[10px]">28m</span>
+</div>
+<span class="material-symbols-outlined text-sm text-slate-600">bolt</span>
+</div>
+<p class="text-body-sm text-slate-300 mt-0.5 leading-snug">Neural network scaling laws challenged by new research findings.</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- POLITICAL FEED (Trump Watch) -->
+<section class="lg:col-span-4 neo-glass rounded flex flex-col">
+<div class="px-4 py-3 border-b border-slate-800 bg-red-500/5 flex items-center gap-2">
+<span class="material-symbols-outlined text-red-400 text-sm">visibility</span>
+<h2 class="font-label-caps text-[11px] text-red-400 tracking-widest uppercase">TRUMP WATCH / POLITICAL</h2>
+</div>
+<div class="p-4 flex-1 flex flex-col gap-4 overflow-y-auto max-h-[350px]">
+<div class="border-l-2 border-red-500/50 pl-4 py-1">
+<div class="text-[10px] font-label-caps text-slate-500 mb-1 uppercase">ALERT: RALLY SCHEDULED</div>
+<p class="text-body-sm font-medium">New campaign stop confirmed in Michigan for upcoming Saturday cycle.</p>
+<span class="text-[9px] font-mono-code text-red-400 mt-2 block">SOURCE: TRUTH SOCIAL SCRAPER</span>
+</div>
+<div class="border-l-2 border-slate-700 pl-4 py-1">
+<div class="text-[10px] font-label-caps text-slate-500 mb-1 uppercase">POLL UPDATE</div>
+<p class="text-body-sm text-slate-300">Swing state margins tighten by 0.2% in latest Emerson poll analysis.</p>
+</div>
+<div class="border-l-2 border-indigo-500/50 pl-4 py-1">
+<div class="text-[10px] font-label-caps text-slate-500 mb-1 uppercase">MEDIA MENTION</div>
+<p class="text-body-sm text-slate-300">Analysis of recent prime-time interview trends across major networks.</p>
+</div>
+</div>
+</section>
+</div>
+</div>
+</main>
+<!-- Contextual System Status Overlay -->
+<div class="fixed bottom-4 left-4 z-50 pointer-events-none">
+<div class="neo-glass px-4 py-2 rounded-lg pointer-events-auto flex items-center gap-4">
+<div class="flex items-center gap-2 border-r border-slate-800 pr-4">
+<span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+<span class="font-label-caps text-[9px] text-slate-400 uppercase">SYS_OPERATIONAL</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[10px] text-indigo-400">memory</span>
+<span class="font-mono-code text-[9px] text-slate-500">MEM: 12.4GB/32GB</span>
+</div>
+</div>
+</div>
+</body></html>
