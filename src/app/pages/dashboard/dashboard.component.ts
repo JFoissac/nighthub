@@ -13,6 +13,11 @@ import { StreamsSectionComponent } from '../../components/sections/streams-secti
 import { NewsSectionComponent } from '../../components/sections/news-section.component';
 import { TrumpSectionComponent } from '../../components/sections/trump-section.component';
 import { ApiService, DashboardData } from '../../services/api.service';
+import { VideosStore } from '../../stores/videos.store';
+import { NewsStore } from '../../stores/news.store';
+import { TrumpStore } from '../../stores/trump.store';
+import { StreamsStore } from '../../stores/streams.store';
+import { TweetsStore } from '../../stores/tweets.store';
 import { TwitchStream, YoutubeVideo } from '../../models';
 
 @Component({
@@ -43,10 +48,10 @@ import { TwitchStream, YoutubeVideo } from '../../models';
         [weatherTemp]="dashboardData()?.weather?.days?.[0]?.temp ?? null"
         [weatherCity]="dashboardData()?.weather?.city || ''"
         [weatherCondition]="dashboardData()?.weather?.days?.[0]?.condition || ''"
-        [streamCount]="dashboardData()?.streams?.length || 0"
-        [videoCount]="dashboardData()?.videos?.length || 0"
-        [newsCount]="dashboardData()?.news?.length || 0"
-        [tweetCount]="dashboardData()?.tweets?.length || 0"
+        [streamCount]="streamsStore.count()"
+        [videoCount]="videosStore.count()"
+        [newsCount]="newsStore.count()"
+        [tweetCount]="tweetsStore.count()"
       ></app-header>
 
       @if (showWeather()) {
@@ -80,13 +85,12 @@ import { TwitchStream, YoutubeVideo } from '../../models';
 
       @if (showStreamList()) {
         <app-stream-list-popup
-          [streams]="dashboardData()?.streams || []"
+          [streams]="streamsStore.streams()"
           (close)="showStreamList.set(false)"
           (selectStream)="showStreamList.set(false); onStreamSelect($event)"
         ></app-stream-list-popup>
       }
 
-      <!-- Push-panel flex layout: main shrinks when stream panel is open -->
       <div class="flex pt-12 min-h-screen">
         <main class="flex-1 min-w-0">
         <div class="p-6 max-w-screen-2xl mx-auto">
@@ -104,21 +108,15 @@ import { TwitchStream, YoutubeVideo } from '../../models';
         } @else {
 
           <!-- Top Row: Twitter (5-col) + YouTube (7-col) -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
-            <app-twitter-section
-              [tweets]="dashboardData()?.tweets || []"
-            ></app-twitter-section>
-
-<app-youtube-section
-              [videos]="dashboardData()?.videos || []"
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
+            <app-twitter-section></app-twitter-section>
+            <app-youtube-section
               (selectVideo)="selectedVideo.set($event)"
               (openSettings)="showSettings.set(true)"
             ></app-youtube-section>
           </div>
 
           <app-streams-section
-            [streams]="dashboardData()?.streams || []"
             (selectStream)="onStreamSelect($event)"
             (openStreamList)="showStreamList.set(true)"
             (openSettings)="showSettings.set(true)"
@@ -126,15 +124,10 @@ import { TwitchStream, YoutubeVideo } from '../../models';
 
           <!-- Bottom Row: AI Blog (6-col) + Trump Watch (6-col) -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-
             <app-news-section
-              [news]="dashboardData()?.news || []"
               (feedAdded)="onFeedAdded($event)"
             ></app-news-section>
-
-            <app-trump-section
-              [items]="dashboardData()?.trump || []"
-            ></app-trump-section>
+            <app-trump-section></app-trump-section>
           </div>
         }
         </div>
@@ -160,6 +153,12 @@ import { TwitchStream, YoutubeVideo } from '../../models';
 export class DashboardComponent implements OnInit {
   private apiService = inject(ApiService);
 
+  readonly videosStore = inject(VideosStore);
+  readonly newsStore = inject(NewsStore);
+  readonly trumpStore = inject(TrumpStore);
+  readonly streamsStore = inject(StreamsStore);
+  readonly tweetsStore = inject(TweetsStore);
+
   dashboardData = signal<DashboardData | null>(null);
   isLoading = signal(true);
   isSyncing = signal(false);
@@ -170,8 +169,6 @@ export class DashboardComponent implements OnInit {
   selectedStream = signal<TwitchStream | null>(null);
   selectedVideo = signal<YoutubeVideo | null>(null);
   panelVideo = signal<YoutubeVideo | null>(null);
-
-  readonly maxLimit = 100;
 
   @HostListener('document:keydown.escape')
   onEscape() {
@@ -205,7 +202,7 @@ export class DashboardComponent implements OnInit {
     }
   }
 
-loadDashboard() {
+  loadDashboard() {
     console.log('[loadDashboard] START');
     this.isLoading.set(true);
     this.loadingStatus.set('CONNECTING...');
@@ -223,33 +220,11 @@ loadDashboard() {
           tweets: data.tweets?.length ?? 0,
         });
 
-        // ── STREAMS ──────────────────────────────────────────────────
-        console.groupCollapsed(`[STREAMS] ${data.streams?.length ?? 0} items`);
-        (data.streams || []).forEach((s: any, i: number) => {
-          console.log(`  [${i}] ${s.channelName} | live=${s.isLive} | viewers=${s.viewerCount} | game=${s.gameName} | id=${s.twitchId}`);
-        });
-        console.groupEnd();
-
-        // ── VIDEOS ───────────────────────────────────────────────────
-        console.groupCollapsed(`[VIDEOS] ${data.videos?.length ?? 0} items`);
-        (data.videos || []).forEach((v: any, i: number) => {
-          console.log(`  [${i}] ${v.channelName} | "${v.title?.substring(0,50)}" | publishedAt=${v.publishedAt} | isLive=${v.isLive}`);
-        });
-        console.groupEnd();
-
-        // ── NEWS ─────────────────────────────────────────────────────
-        console.groupCollapsed(`[NEWS] ${data.news?.length ?? 0} items`);
-        (data.news || []).forEach((n: any, i: number) => {
-          console.log(`  [${i}] [${n.source}] "${n.title?.substring(0,50)}" | pubDate=${n.pubDate} | createdAt=${n.createdAt}`);
-        });
-        console.groupEnd();
-
-        // ── TRUMP ────────────────────────────────────────────────────
-        console.groupCollapsed(`[TRUMP] ${data.trump?.length ?? 0} items`);
-        (data.trump || []).forEach((t: any, i: number) => {
-          console.log(`  [${i}] criticality=${t.criticality} | "${t.content?.substring(0,60)}" | tweetDate=${t.tweetDate}`);
-        });
-        console.groupEnd();
+        this.videosStore.setItems(data.videos || []);
+        this.newsStore.setItems(data.news || []);
+        this.trumpStore.setItems(data.trump || []);
+        this.streamsStore.setItems(data.streams || []);
+        this.tweetsStore.setItems(data.tweets || []);
 
         this.dashboardData.set(data);
         this.isLoading.set(false);
@@ -274,6 +249,11 @@ loadDashboard() {
               news: data.news?.length ?? 0,
               trump: data.trump?.length ?? 0,
             });
+            this.videosStore.setItems(data.videos || []);
+            this.newsStore.setItems(data.news || []);
+            this.trumpStore.setItems(data.trump || []);
+            this.streamsStore.setItems(data.streams || []);
+            this.tweetsStore.setItems(data.tweets || []);
             this.dashboardData.set(data);
             this.isLoading.set(false);
             const isEmpty = !data.videos?.length && !data.tweets?.length && !data.streams?.length;

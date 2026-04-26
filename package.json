@@ -32,6 +32,7 @@
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
     "@fontsource/syne": "^5.2.7",
+    "@ngrx/signals": "^21.1.0",
     "autoprefixer": "^10.5.0",
     "date-fns": "^4.1.0",
     "express": "^4.21.2",

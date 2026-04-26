@@ -1,6 +1,7 @@
 import { Component, input, output, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AiNewsItem } from '../../models';
+import { NewsStore } from '../../stores/news.store';
 import { ApiService } from '../../services/api.service';
 import { AiNewsCardComponent } from '../ai-news/ai-news-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
@@ -19,7 +20,7 @@ import { RssDetectModalComponent } from '../rss-detect-modal/rss-detect-modal.co
         </div>
         <div class="flex items-center gap-2">
           <span class="font-label-caps text-[9px] text-text-muted">ANTHROPIC · OPENAI · KIMI · RSS</span>
-          @if (isLoadingMore()) {
+          @if (store.isLoading()) {
             <svg class="w-3.5 h-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
             </svg>
@@ -59,16 +60,16 @@ import { RssDetectModalComponent } from '../rss-detect-modal/rss-detect-modal.co
         }
         <div
           appInfiniteScroll
-          [disabled]="isLoadingMore()"
-          (scrolledToEnd)="loadMore()"
+          [disabled]="store.isLoading()"
+          (scrolledToEnd)="store.loadMore()"
           class="h-1"
         ></div>
-        @if (isLoadingMore()) {
+        @if (store.isLoading()) {
           <div class="text-center py-2">
             <span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING...</span>
           </div>
         }
-        @if (!news().length) {
+        @if (!store.count()) {
           <p class="font-label-caps text-[10px] text-text-muted p-4">NO ARTICLES</p>
         }
       </div>
@@ -83,23 +84,16 @@ import { RssDetectModalComponent } from '../rss-detect-modal/rss-detect-modal.co
   `,
 })
 export class NewsSectionComponent {
+  readonly store = inject(NewsStore);
   private apiService = inject(ApiService);
-
-  news = input<AiNewsItem[]>([]);
 
   feedAdded = output<string>();
 
   sortMode = signal<'date' | 'relevance'>('date');
   showRssDetect = signal(false);
 
-  private limit = signal(20);
-  private isLoading = signal(false);
-  private maxLimit = 100;
-
-  isLoadingMore() { return this.isLoading(); }
-
   sortedNews = computed(() => {
-    const items = this.news();
+    const items = this.store.news();
     const mode = this.sortMode();
     if (mode === 'date') {
       return [...items].sort((a, b) => {
@@ -113,21 +107,6 @@ export class NewsSectionComponent {
 
   toggleSort() {
     this.sortMode.set(this.sortMode() === 'date' ? 'relevance' : 'date');
-  }
-
-  loadMore() {
-    const current = this.limit();
-    const next = Math.min(current + 20, this.maxLimit);
-    if (this.isLoading() || next === current) return;
-    this.isLoading.set(true);
-    this.apiService.getNews(next).subscribe({
-      next: (news) => {
-        this.limit.set(next);
-        this.isLoading.set(false);
-        if (news.length < next) this.limit.set(this.maxLimit);
-      },
-      error: (e) => { console.error('[NewsSection] loadMore error:', e); this.isLoading.set(false); },
-    });
   }
 
   onFeedAdded(feedUrl: string) {

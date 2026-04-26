@@ -1,6 +1,7 @@
 import { Component, input, output, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TwitchStream, YoutubeVideo } from '../../models';
+import { TwitchStream } from '../../models';
+import { StreamsStore } from '../../stores/streams.store';
 import { StreamCardComponent } from '../stream/stream-card.component';
 
 @Component({
@@ -19,10 +20,10 @@ import { StreamCardComponent } from '../stream/stream-card.component';
         </button>
       </div>
       <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-        @for (stream of streams(); track stream.twitchId || stream.id || $index) {
+        @for (stream of store.streams(); track stream.twitchId || stream.id || $index) {
           <app-stream-card [stream]="stream" (select)="selectStream.emit($event)"></app-stream-card>
         }
-        @if (!streams().length) {
+        @if (!store.count()) {
           <div class="neo-glass rounded p-6 flex items-center gap-4">
             <p class="font-label-caps text-[10px] text-text-muted">NO STREAMS LIVE —</p>
             <button (click)="openSettings.emit()" class="font-label-caps text-[10px] text-primary underline">CONFIGURE CHANNELS</button>
@@ -33,7 +34,8 @@ import { StreamCardComponent } from '../stream/stream-card.component';
   `,
 })
 export class StreamsSectionComponent {
-  streams = input<TwitchStream[]>([]);
+  readonly store = inject(StreamsStore);
+
   selectStream = output<TwitchStream>();
   openStreamList = output<void>();
   openSettings = output<void>();

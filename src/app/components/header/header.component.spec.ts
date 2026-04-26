@@ -20,9 +20,10 @@ describe('HeaderComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('should have time property', () => {
+  it('should have time signal', () => {
     expect(component.time).toBeDefined();
-    expect(typeof component.time).toBe('string');
+    expect(typeof component.time).toBe('function');
+    expect(typeof component.time()).toBe('string');
   });
 
   it('should render NightHub title', () => {
