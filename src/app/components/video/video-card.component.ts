@@ -1,4 +1,4 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, signal, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { YoutubeVideo } from '../../models';
 
@@ -36,7 +36,7 @@ import { YoutubeVideo } from '../../models';
             @if (video()!.views) {
               <span class="font-label-caps text-[9px] text-text-muted">{{ formatViews(video()!.views) }}</span>
             }
-            <span class="font-label-caps text-[9px] text-text-muted">{{ relativeDate(video()!.publishedAt || video()!.timestamp) }}</span>
+            <span class="font-label-caps text-[9px] text-text-muted">{{ cachedDate() }}</span>
           </div>
         </div>
       </div>
@@ -46,6 +46,17 @@ import { YoutubeVideo } from '../../models';
 export class VideoCardComponent {
   video = input<YoutubeVideo | null>(null);
   select = output<YoutubeVideo>();
+
+  cachedDate = signal('');
+
+  constructor() {
+    effect(() => {
+      const v = this.video();
+      if (v) {
+        this.cachedDate.set(this.relativeDate(v.publishedAt || v.timestamp));
+      }
+    });
+  }
 
   formatViews(n: number): string {
     if (!n) return '';
