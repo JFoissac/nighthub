@@ -35,6 +35,7 @@ export interface UserPreferences {
   trumpMinCriticality: number;
   customRssFeeds: string;
   refreshInterval: number;
+  themeOledBlack: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

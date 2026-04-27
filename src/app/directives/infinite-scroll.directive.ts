@@ -12,10 +12,8 @@ import {
   standalone: true,
 })
 export class InfiniteScrollDirective implements OnInit, OnDestroy {
-  /** When true, the observer ignores intersections (e.g. during loading) */
   disabled = input(false);
 
-  /** Emitted when the host element becomes visible in its scroll container */
   scrolledToEnd = output<void>();
 
   private removeScrollListener: (() => void) | null = null;

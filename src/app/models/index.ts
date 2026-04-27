@@ -4,10 +4,11 @@ export interface AiNewsItem {
   source: string;
   url: string;
   summary: string;
-  pubDate: string;
+  pubDate?: string;
   isNew?: boolean;
   categories?: string;
   author?: string;
+  timestamp?: Date;
 }
 
 export interface TrumpItem {
@@ -44,7 +45,6 @@ export interface WeatherDay {
 export interface WeatherForecast {
   city: string;
   days: WeatherDay[];
-  // Legacy single-day compatibility
   date?: Date;
   temp?: number;
   condition?: string;

@@ -162,6 +162,7 @@ export class SettingsComponent implements OnInit {
     trumpMinCriticality: 0,
     customRssFeeds: '',
     refreshInterval: 30,
+    themeOledBlack: false,
   };
 
   twitchList = signal<string[]>([]);

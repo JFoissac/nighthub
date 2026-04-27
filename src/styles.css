@@ -139,6 +139,16 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; letter-spacin
 
 ::selection { background: var(--primary); color: #0A0A0F; }
 
+/* === Focus Styles === */
+*:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
 @layer utilities {
   .line-clamp-2 {
     display: -webkit-box;
@@ -152,4 +162,15 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; letter-spacin
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+}
+
+body.theme-oled {
+  --bg: #000000;
+  --surface: #0a0a0f;
+  background-color: #000000 !important;
+}
+
+body.theme-oled .neo-glass,
+body.theme-oled .neo-glass.rounded {
+  background-color: rgba(10, 10, 15, 0.9) !important;
 }

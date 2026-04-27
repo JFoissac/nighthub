@@ -1,5 +1,6 @@
-import { Component, input, output, signal, OnDestroy, OnInit } from '@angular/core';
+import { Component, input, output, signal, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-header',
@@ -17,7 +18,7 @@ import { CommonModule } from '@angular/common';
           @if (weatherTemp() !== null) {
             <button (click)="openWeather.emit()"
                     class="flex items-center gap-1.5 hover:text-primary transition-colors group"
-                    title="Voir la météo détaillée">
+                    aria-label="Voir la météo détaillée">
               <span class="text-[13px]">{{ weatherIcon() }}</span>
               <span class="font-label-caps text-[10px] text-text-muted group-hover:text-primary">
                 {{ weatherTemp() }}°C {{ weatherCity() | uppercase }}
@@ -29,7 +30,7 @@ import { CommonModule } from '@angular/common';
           <button
             (click)="openStreamList.emit()"
             class="flex items-center gap-1.5 hover:text-primary transition-colors group"
-            title="Voir les streams en cours"
+            aria-label="Voir les streams en cours"
           >
             <span class="status-pulse" [class.status-pulse-green]="streamCount() > 0" [class.status-pulse-red]="streamCount() === 0"></span>
             <span class="font-label-caps text-[10px] text-text-muted group-hover:text-primary">
@@ -47,12 +48,24 @@ import { CommonModule } from '@angular/common';
       </div>
 
       <div class="flex items-center gap-3">
+        <button
+          (click)="toggleOled()"
+          class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
+          [title]="isOled() ? 'Disable OLED mode' : 'Enable OLED mode'"
+          [attr.aria-pressed]="isOled()"
+          aria-label="Toggle OLED dark mode"
+        >
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+        </button>
         <div class="relative hidden md:block">
-          <input class="bg-[#131318] border border-[#1E1E2E] rounded px-3 py-1 font-label-caps text-[10px] focus:outline-none focus:border-primary transition-all w-40 text-text-secondary placeholder-text-muted" placeholder="TERMINAL SEARCH..." type="text"/>
+          <input role="search" aria-label="Rechercher" class="bg-[#131318] border border-[#1E1E2E] rounded px-3 py-1 font-label-caps text-[10px] focus:outline-none focus:border-primary transition-all w-40 text-text-secondary placeholder-text-muted" placeholder="TERMINAL SEARCH..." type="text"/>
         </div>
         <button (click)="openSettings.emit()"
                 class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
-                title="Configuration">
+                aria-label="Configuration">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
@@ -60,7 +73,7 @@ import { CommonModule } from '@angular/common';
         </button>
         <button (click)="refresh.emit()"
                 class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
-                title="Refresh">
+                aria-label="Actualiser">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
@@ -70,6 +83,10 @@ import { CommonModule } from '@angular/common';
   `,
 })
 export class HeaderComponent implements OnInit, OnDestroy {
+  private apiService = inject(ApiService);
+  private prefs = signal<any>({});
+
+  isOled = signal(false);
   time = signal(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
 
   // Weather data passed from dashboard
@@ -94,10 +111,33 @@ export class HeaderComponent implements OnInit, OnDestroy {
     this.intervalId = setInterval(() => {
       this.time.set(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
     }, 1000);
+    this.apiService.getPreferences().subscribe({
+      next: (prefs) => {
+        this.prefs.set(prefs);
+        const oled = prefs.themeOledBlack ?? false;
+        this.isOled.set(oled);
+        if (oled) {
+          document.body.classList.add('theme-oled');
+        } else {
+          document.body.classList.remove('theme-oled');
+        }
+      },
+    });
   }
 
   ngOnDestroy() {
     clearInterval(this.intervalId);
+  }
+
+  toggleOled() {
+    const newVal = !this.isOled();
+    this.isOled.set(newVal);
+    if (newVal) {
+      document.body.classList.add('theme-oled');
+    } else {
+      document.body.classList.remove('theme-oled');
+    }
+    this.apiService.savePreferences({ ...this.prefs(), themeOledBlack: newVal } as any).subscribe();
   }
 
   weatherIcon(): string {

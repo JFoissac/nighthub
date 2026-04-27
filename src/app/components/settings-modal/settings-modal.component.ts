@@ -13,17 +13,17 @@ import { ApiService, UserPreferences, TwitterAccountStat } from '../../services/
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
 
       <!-- Modal -->
-      <div class="relative bg-surface border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div class="relative bg-surface border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" role="dialog" aria-labelledby="settings-title">
         <!-- Header -->
         <div class="sticky top-0 bg-surface border-b border-border px-6 py-4 flex items-center justify-between rounded-t-2xl z-10">
-          <h2 class="font-headline text-xl font-bold text-text-primary flex items-center gap-2">
+          <h2 id="settings-title" class="font-headline text-xl font-bold text-text-primary flex items-center gap-2">
             <svg class="w-5 h-5 text-text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
               <circle cx="12" cy="12" r="3"/>
             </svg>
             Configuration NightHub
           </h2>
-          <button (click)="close.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary">
+          <button (click)="close.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary" aria-label="Fermer">
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 6L6 18M6 6l12 12"/>
             </svg>
@@ -37,6 +37,35 @@ import { ApiService, UserPreferences, TwitterAccountStat } from '../../services/
               Preferences sauvegardees
             </div>
           }
+
+          <!-- Theme Section -->
+          <section class="space-y-3">
+            <div class="flex items-center gap-2 pb-2 border-b border-border/50">
+              <span class="text-lg">🎨</span>
+              <h3 class="font-headline font-semibold text-text-primary">Theme</h3>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm text-text-primary">OLED True Black</label>
+                <p class="text-xs text-text-muted">Background #000000 for OLED screens</p>
+              </div>
+              <button
+                (click)="themeOled = !themeOled"
+                class="relative w-12 h-6 rounded-full transition-colors"
+                [class.bg-primary]="themeOled"
+                [class.bg-[#1E1E2E]]="!themeOled"
+                role="switch"
+                [attr.aria-checked]="themeOled"
+              >
+                <span
+                  class="absolute top-1 w-4 h-4 rounded-full bg-white transition-transform"
+                  [class.left-1]="!themeOled"
+                  [class.left-7]="themeOled"
+                ></span>
+              </button>
+            </div>
+          </section>
 
           <!-- Twitch Section -->
           <section class="space-y-3">
@@ -333,7 +362,10 @@ export class SettingsModalComponent implements OnInit {
     trumpMinCriticality: 0,
     customRssFeeds: '',
     refreshInterval: 30,
+    themeOledBlack: false,
   };
+
+  themeOled = false;
 
   twitchPasteList = '';
   youtubePasteList = '';
@@ -379,6 +411,7 @@ export class SettingsModalComponent implements OnInit {
     this.apiService.getPreferences().subscribe({
       next: (p) => {
         this.prefs = { ...this.prefs, ...p };
+        this.themeOled = p.themeOledBlack ?? false;
         this.updateLists();
       },
     });
@@ -505,7 +538,7 @@ export class SettingsModalComponent implements OnInit {
 
   saveAndClose() {
     this.isSaving.set(true);
-    this.apiService.savePreferences(this.prefs).subscribe({
+    this.apiService.savePreferences({ ...this.prefs, themeOledBlack: this.themeOled } as any).subscribe({
       next: () => {
         this.isSaving.set(false);
         this.saved.emit();

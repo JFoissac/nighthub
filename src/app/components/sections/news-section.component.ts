@@ -12,14 +12,14 @@ const AUTHORITY_SCORE: Record<string, number> = {
   'openai': 1.0,
   'kimi': 1.0,
   'next.ink': 0.7,
-  'numerama': 0.7,
+  'numerama': 0.6,
   'frandroid': 0.4,
 };
 
 const HIGH_SIGNAL_KEYWORDS = [
   'launch', 'release', 'announce', 'introduce', 'reveal',
   'gpt', 'claude', 'gemini', 'llama', 'mistral', 'kimi',
-  'benchmark', 'study', 'research', ' breakthrough', '超越',
+  'benchmark', 'study', 'research', 'breakthrough', '超越',
   'interview', 'ceo', 'founder', 'exclusive',
   'safety', 'alignment', 'policy', 'regulation',
   'api', 'model', 'training', 'inference',
@@ -34,17 +34,23 @@ const TRUMP_TOPIC_KEYWORDS = [
   'sanctions', 'executive order', 'decree',
 ];
 
-const RELEVANCE_HALFLIFE_HOURS = 4;
-const RECENCY_WEIGHT = 0.40;
-const AUTHORITY_WEIGHT = 0.30;
+const RELEVANCE_HALFLIFE_HOURS = 12;
+const RECENCY_WEIGHT = 0.30;
+const AUTHORITY_WEIGHT = 0.25;
 const QUALITY_WEIGHT = 0.20;
-const TOPIC_BOOST_WEIGHT = 0.10;
+const CROSS_SECTION_WEIGHT = 0.25;
 
-function calculateRelevanceScore(item: AiNewsItem, trumpTrendingTopics: string[]): number {
-  const hoursOld = (Date.now() - new Date(item.pubDate).getTime()) / 3_600_000;
+function calculateRelevanceScore(
+  item: AiNewsItem,
+  crossSectionKeywords: string[],
+  streamGames: string[],
+  videoCategories: string[]
+): number {
+  const pubDate = item.pubDate || item.timestamp?.toISOString() || new Date().toISOString();
+  const hoursOld = (Date.now() - new Date(pubDate).getTime()) / 3_600_000;
   const recency = Math.pow(0.5, hoursOld / RELEVANCE_HALFLIFE_HOURS);
 
-  const authority = AUTHORITY_SCORE[item.source] ?? 0.5;
+  const authority = AUTHORITY_SCORE[item.source?.toLowerCase()] ?? 0.5;
 
   const hasSummary = item.summary && item.summary.length > 20 ? 0.2 : 0;
   const titleLen = item.title.length;
@@ -53,19 +59,29 @@ function calculateRelevanceScore(item: AiNewsItem, trumpTrendingTopics: string[]
   const keywordBoost = HIGH_SIGNAL_KEYWORDS.some(k => titleLower.includes(k)) ? 0.2 : 0;
   const quality = Math.min(0.4, hasSummary + lenScore + keywordBoost);
 
-  let topicBoost = 0;
-  if (trumpTrendingTopics.length > 0) {
+  let crossBoost = 0;
+  if (crossSectionKeywords.length > 0) {
     const text = `${item.title} ${item.summary || ''} ${item.categories || ''}`.toLowerCase();
-    const matchCount = trumpTrendingTopics.filter(t => text.includes(t)).length;
-    topicBoost = Math.min(0.3, matchCount * 0.05);
+    const matchCount = crossSectionKeywords.filter(kw => text.includes(kw)).length;
+    crossBoost = Math.min(0.5, matchCount * 0.08);
   }
 
-  const isNewBonus = item.isNew ? 0.1 : 0;
+  if (streamGames.length > 0) {
+    const gameMatch = streamGames.some(g => titleLower.includes(g.toLowerCase()));
+    if (gameMatch) crossBoost += 0.1;
+  }
+
+  if (videoCategories.length > 0) {
+    const catMatch = videoCategories.some(c => titleLower.includes(c.toLowerCase()));
+    if (catMatch) crossBoost += 0.1;
+  }
+
+  const isNewBonus = item.isNew ? 0.05 : 0;
 
   return (recency * RECENCY_WEIGHT)
     + (authority * AUTHORITY_WEIGHT)
     + (quality * QUALITY_WEIGHT)
-    + (topicBoost * TOPIC_BOOST_WEIGHT)
+    + (crossBoost * CROSS_SECTION_WEIGHT)
     + isNewBonus;
 }
 
@@ -81,7 +97,7 @@ function calculateRelevanceScore(item: AiNewsItem, trumpTrendingTopics: string[]
           <span class="font-label-caps text-[9px] text-text-muted">({{ sortedNews().length }})</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="font-label-caps text-[9px] text-text-muted">ANTHROPIC · OPENAI · KIMI · NEXT · NUMERAMA · FRANDROID</span>
+          <span class="font-label-caps text-[9px] text-text-muted">ANTHROPIC · OPENAI · KIMI</span>
           @if (store.isLoading()) {
             <svg class="w-3.5 h-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
@@ -93,7 +109,7 @@ function calculateRelevanceScore(item: AiNewsItem, trumpTrendingTopics: string[]
           <button
             (click)="toggleSort()"
             class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors"
-            title="Toggle sort mode"
+            aria-label="Changer le mode de tri"
           >
             @if (sortMode() === 'date') {
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -108,7 +124,7 @@ function calculateRelevanceScore(item: AiNewsItem, trumpTrendingTopics: string[]
           <button
             (click)="showRssDetect.set(true)"
             class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors"
-            title="Ajouter un flux RSS"
+            aria-label="Ajouter un flux RSS"
           >
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <path d="M12 5v14M5 12h14"/>
@@ -153,30 +169,40 @@ export class NewsSectionComponent {
 
   sortMode = signal<'date' | 'relevance'>('date');
   showRssDetect = signal(false);
-  trumpTrendingTopics = signal<string[]>([]);
+  trumpKeywords = signal<string[]>([]);
+  streamGames = signal<string[]>([]);
+  videoCategories = signal<string[]>([]);
 
   constructor() {
-    this.loadTrumpTopics();
+    this.loadCrossSectionSignals();
   }
 
-  private loadTrumpTopics() {
+  private loadCrossSectionSignals() {
     this.apiService.getTrumpTweets(10).subscribe({
       next: (tweets) => {
-        const topics = new Set<string>();
+        const keywords = new Set<string>();
         tweets.forEach((t: any) => {
           if (t.keywords) {
-            t.keywords.split(',').forEach((k: string) => topics.add(k.trim().toLowerCase()));
+            t.keywords.split(',').forEach((k: string) => keywords.add(k.trim().toLowerCase()));
           }
           if (t.criticality >= 7) {
             TRUMP_TOPIC_KEYWORDS.forEach(kw => {
-              if ((t.content || '').toLowerCase().includes(kw)) topics.add(kw);
+              if ((t.content || '').toLowerCase().includes(kw)) keywords.add(kw);
             });
           }
         });
-        this.trumpTrendingTopics.set([...topics]);
+        this.trumpKeywords.set([...keywords]);
       },
-      error: () => this.trumpTrendingTopics.set([]),
+      error: () => this.trumpKeywords.set([]),
     });
+  }
+
+  setStreamGames(games: string[]) {
+    this.streamGames.set(games);
+  }
+
+  setVideoCategories(categories: string[]) {
+    this.videoCategories.set(categories);
   }
 
   sortedNews = computed(() => {
@@ -184,16 +210,20 @@ export class NewsSectionComponent {
     const mode = this.sortMode();
     if (mode === 'date') {
       return [...items].sort((a, b) => {
-        const dateA = new Date((a as any).pubDate || 0).getTime();
-        const dateB = new Date((b as any).pubDate || 0).getTime();
+        const pubDateA = (a as any).pubDate || a.timestamp?.toISOString() || '';
+        const pubDateB = (b as any).pubDate || b.timestamp?.toISOString() || '';
+        const dateA = new Date(pubDateA).getTime();
+        const dateB = new Date(pubDateB).getTime();
         if (Number.isNaN(dateA)) return 1;
         if (Number.isNaN(dateB)) return -1;
         return dateB - dateA;
       });
     }
-    const topics = this.trumpTrendingTopics();
+    const keywords = this.trumpKeywords();
+    const games = this.streamGames();
+    const cats = this.videoCategories();
     return [...items]
-      .map(item => ({ item, score: calculateRelevanceScore(item, topics) }))
+      .map(item => ({ item, score: calculateRelevanceScore(item, keywords, games, cats) }))
       .sort((a, b) => b.score - a.score)
       .map(({ item }) => item);
   });

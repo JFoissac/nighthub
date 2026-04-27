@@ -162,6 +162,7 @@ model UserPreference {
   trumpMinCriticality Int      @default(0)
   customRssFeeds      String   @default("")
   refreshInterval     Int      @default(30)
+  themeOledBlack      Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

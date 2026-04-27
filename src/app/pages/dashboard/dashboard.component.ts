@@ -13,12 +13,13 @@ import { StreamsSectionComponent } from '../../components/sections/streams-secti
 import { NewsSectionComponent } from '../../components/sections/news-section.component';
 import { TrumpSectionComponent } from '../../components/sections/trump-section.component';
 import { ApiService, DashboardData } from '../../services/api.service';
+import { ToastService } from '../../services/toast.service';
+import { TwitchStream, YoutubeVideo } from '../../models';
 import { VideosStore } from '../../stores/videos.store';
 import { NewsStore } from '../../stores/news.store';
 import { TrumpStore } from '../../stores/trump.store';
 import { StreamsStore } from '../../stores/streams.store';
 import { TweetsStore } from '../../stores/tweets.store';
-import { TwitchStream, YoutubeVideo } from '../../models';
 
 @Component({
   selector: 'app-dashboard',
@@ -152,6 +153,7 @@ import { TwitchStream, YoutubeVideo } from '../../models';
 })
 export class DashboardComponent implements OnInit {
   private apiService = inject(ApiService);
+  private toastService = inject(ToastService);
 
   readonly videosStore = inject(VideosStore);
   readonly newsStore = inject(NewsStore);

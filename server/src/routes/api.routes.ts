@@ -54,6 +54,7 @@ const preferencesSchema = z.object({
   trumpMinCriticality: z.number().optional(),
   customRssFeeds: z.string().optional(),
   refreshInterval: z.number().optional(),
+  themeOledBlack: z.boolean().optional(),
 });
 
 // --- Route handlers ---
@@ -263,6 +264,9 @@ async function getTwitterAccountStats(_req: Request, res: Response) {
   try {
     const { prisma } = await import('../db/prisma.client');
     const accounts = await twitterService.getTwitterAccounts();
+    if (!accounts.length) {
+      return res.json([]);
+    }
     const stats = await prisma.$queryRaw<{ authorHandle: string; lastSeen: string }[]>`
       SELECT authorHandle, MAX(fetchedAt) as lastSeen FROM Tweet GROUP BY authorHandle
     `;
@@ -280,7 +284,8 @@ async function getTwitterAccountStats(_req: Request, res: Response) {
     });
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch account stats' });
+    console.error('[Twitter] account stats error:', error);
+    res.json([]);
   }
 }
 
@@ -302,6 +307,7 @@ async function getPreferences(_req: Request, res: Response) {
       trumpMinCriticality: pref.trumpMinCriticality,
       customRssFeeds: pref.customRssFeeds,
       refreshInterval: pref.refreshInterval,
+      themeOledBlack: pref.themeOledBlack,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch preferences' });
@@ -335,6 +341,7 @@ async function savePreferences(req: Request, res: Response) {
     if (typeof body.trumpMinCriticality === 'number') data.trumpMinCriticality = Math.max(0, Math.min(10, body.trumpMinCriticality));
     if (typeof body.customRssFeeds === 'string') data.customRssFeeds = body.customRssFeeds.substring(0, 10000);
     if (typeof body.refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(60, body.refreshInterval));
+    if (typeof body.themeOledBlack === 'boolean') data.themeOledBlack = body.themeOledBlack;
 
     const existing = await prisma.userPreference.findFirst();
     if (existing) {
