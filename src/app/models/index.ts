@@ -1,11 +1,13 @@
 export interface AiNewsItem {
   id: string;
   title: string;
-  source: 'anthropic' | 'openai' | 'kimi';
+  source: string;
   url: string;
   summary: string;
-  timestamp: Date;
+  pubDate: string;
   isNew?: boolean;
+  categories?: string;
+  author?: string;
 }
 
 export interface TrumpItem {

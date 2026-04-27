@@ -13,7 +13,7 @@ import { AiNewsItem } from '../../models';
         <h3 class="text-[13px] font-medium text-text-primary group-hover:text-primary transition-colors line-clamp-2 leading-snug">
           {{ item()!.title }}
         </h3>
-        <div class="flex items-center gap-2 mt-1.5">
+        <div class="flex items-center gap-2 mt-1 flex-wrap">
           <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border border-primary/30 text-primary/80"
                 [style.borderColor]="getSourceColor() + '50'"
                 [style.color]="getSourceColor()">
@@ -22,7 +22,12 @@ import { AiNewsItem } from '../../models';
           @if (item()!.isNew) {
             <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border border-secondary/30 text-secondary/80">NEW</span>
           }
-          <span class="font-label-caps text-[9px] text-text-muted">{{ item()!.timestamp | date:'MMM d' }}</span>
+          <span class="font-label-caps text-[9px] text-text-muted">{{ item()!.pubDate | date:'MMM d' }}</span>
+          @if (item()!.categories) {
+            <span class="font-label-caps text-[8px] text-text-muted/60 truncate max-w-[120px]" [title]="item()!.categories!">
+              · {{ item()!.categories }}
+            </span>
+          }
         </div>
       </a>
     }
@@ -36,6 +41,9 @@ export class AiNewsCardComponent {
       case 'anthropic': return '#fbbf24';
       case 'openai':    return '#34d399';
       case 'kimi':      return '#a78bfa';
+      case 'next.ink':  return '#60a5fa';
+      case 'numerama':  return '#f472b6';
+      case 'frandroid': return '#22c55e';
       default:          return '#c0c1ff';
     }
   }

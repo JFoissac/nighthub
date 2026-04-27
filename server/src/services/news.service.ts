@@ -12,38 +12,55 @@ const FETCH_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
+const DEFAULT_RSS_FEEDS = [
+  { url: 'https://next.ink/feed/free', source: 'next.ink' },
+  { url: 'https://www.numerama.com/feed/', source: 'numerama' },
+  { url: 'https://www.frandroid.com/feed/', source: 'frandroid' },
+] as const;
+
 export class NewsService {
   async fetchAiNews(): Promise<any[]> {
-    const [openai, anthropic, kimi, custom] = await Promise.allSettled([
+    const [openai, anthropic, kimi, rss] = await Promise.allSettled([
       this.fetchOpenAI(),
       this.scrapeAnthropic(),
       this.scrapeKimi(),
-      this.fetchCustomRssFeeds(),
+      this.fetchConfiguredRssFeeds(),
     ]);
 
     const all = [
       ...(openai.status === 'fulfilled' ? openai.value : []),
       ...(anthropic.status === 'fulfilled' ? anthropic.value : []),
       ...(kimi.status === 'fulfilled' ? kimi.value : []),
-      ...(custom.status === 'fulfilled' ? custom.value : []),
+      ...(rss.status === 'fulfilled' ? rss.value : []),
     ];
 
     if (all.length > 0) await this.cacheNews(all);
 
     return all.sort((a, b) =>
-      new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime()
+      this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate)
     );
   }
 
-  /** Custom RSS feeds from user preferences */
-  private async fetchCustomRssFeeds(): Promise<any[]> {
+  /** Default + custom RSS feeds */
+  private async fetchConfiguredRssFeeds(): Promise<any[]> {
     try {
       const pref = await prisma.userPreference.findFirst();
       const raw = (pref as any)?.customRssFeeds || '';
-      const urls = raw.split(/[\n,]/).map((u: string) => u.trim()).filter((u: string) => u.startsWith('http'));
-      if (urls.length === 0) return [];
+      const customUrls = raw
+        .split(/[\n,]/)
+        .map((u: string) => u.trim())
+        .filter((u: string) => u.startsWith('http'));
 
-      const results = await Promise.allSettled(urls.map((url: string) => this.fetchSingleRss(url)));
+      const feeds = [
+        ...DEFAULT_RSS_FEEDS,
+        ...customUrls.map((url: string) => ({ url, source: new URL(url).hostname.replace('www.', '') })),
+      ].filter((feed, index, allFeeds) =>
+        allFeeds.findIndex((candidate) => candidate.url === feed.url) === index
+      );
+
+      const results = await Promise.allSettled(
+        feeds.map(({ url, source }) => this.fetchSingleRss(url, source))
+      );
       const all: any[] = [];
       for (const r of results) {
         if (r.status === 'fulfilled') all.push(...r.value);
@@ -55,22 +72,33 @@ export class NewsService {
     }
   }
 
-  private async fetchSingleRss(url: string): Promise<any[]> {
+  private async fetchSingleRss(url: string, source?: string): Promise<any[]> {
     const feed = await rssParser.parseURL(url);
-    const domain = new URL(url).hostname.replace('www.', '');
+    const domain = source || new URL(url).hostname.replace('www.', '');
     const items = feed.items || [];
     console.log(`[News] Custom RSS ${domain}: ${items.length} items`);
     items.slice(0, 2).forEach((item: any, i: number) => {
       console.log(`  [${domain} ${i}] "${item.title?.substring(0,50)}" pubDate="${item.pubDate}" isoDate="${item.isoDate}"`);
     });
-    return items.slice(0, 8).map((item: any) => ({
-      title: (item.title || '').substring(0, 255),
-      source: domain,
-      url: item.link || url,
-      summary: this.clean(item.contentSnippet || item.description || ''),
-      isNew: this.isRecent(item.pubDate || item.isoDate),
-      pubDate: item.pubDate || item.isoDate || new Date().toISOString(),
-    }));
+    return items
+      .map((item: any) => {
+        const pubDate = this.normalizeDate(item.pubDate || item.isoDate);
+        const categories = (item.categories || []).join(',').substring(0, 200);
+        const author = (item.creator || item.author || item['dc:creator'] || '').substring(0, 100);
+        return {
+          title: (item.title || '').substring(0, 255),
+          source: domain,
+          url: item.link || url,
+          summary: this.clean(item.contentSnippet || item.description || ''),
+          isNew: pubDate ? this.isRecent(pubDate) : false,
+          pubDate: pubDate || new Date(0).toISOString(),
+          categories,
+          author,
+        };
+      })
+      .filter((item: any) => item.title && item.url)
+      .sort((a: any, b: any) => this.toTimestamp(b.pubDate) - this.toTimestamp(a.pubDate))
+      .slice(0, 8);
   }
 
   /** OpenAI: use official RSS feed */
@@ -81,14 +109,17 @@ export class NewsService {
     items.slice(0, 3).forEach((item: any, i: number) => {
       console.log(`  [OpenAI ${i}] title="${item.title?.substring(0,50)}" pubDate="${item.pubDate}" isoDate="${item.isoDate}"`);
     });
-    return items.slice(0, 10).map((item: any) => ({
-      title: item.title || 'OpenAI News',
-      source: 'openai',
-      url: item.link || 'https://openai.com/news',
-      summary: this.clean(item.contentSnippet || item.description || ''),
-      isNew: this.isRecent(item.pubDate || item.isoDate),
-      pubDate: item.pubDate || item.isoDate || new Date().toISOString(),
-    }));
+    return items.slice(0, 10).map((item: any) => {
+      const pubDate = this.normalizeDate(item.pubDate || item.isoDate);
+      return {
+        title: item.title || 'OpenAI News',
+        source: 'openai',
+        url: item.link || 'https://openai.com/news',
+        summary: this.clean(item.contentSnippet || item.description || ''),
+        isNew: pubDate ? this.isRecent(pubDate) : false,
+        pubDate: pubDate || new Date(0).toISOString(),
+      };
+    });
   }
 
   /** Anthropic: scrape https://www.anthropic.com/news */
@@ -102,7 +133,7 @@ export class NewsService {
     const seen = new Set<string>();
 
     // Pattern: find href="/news/slug" followed by title text nearby
-    const regex = /href="(\/news\/([a-z0-9][a-z0-9\-]{3,60}))"/g;
+    const regex = /href="(\/news\/([a-z0-9][a-z0-9-]{3,60}))"/g;
     let m: RegExpExecArray | null;
 
     while ((m = regex.exec(html)) !== null) {
@@ -133,15 +164,15 @@ export class NewsService {
       if (title.length > 5) {
         // Try to find date near the link
         const dateMatch = after.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+\d{1,2},?\s+\d{4}/);
-        const pubDate = dateMatch ? new Date(dateMatch[0]).toISOString() : new Date().toISOString();
+        const pubDate = this.normalizeDate(dateMatch?.[0]);
 
         articles.push({
           title,
           source: 'anthropic',
           url: `https://www.anthropic.com${path}`,
           summary: `Article Anthropic: ${title}`,
-          isNew: this.isRecent(pubDate),
-          pubDate,
+          isNew: pubDate ? this.isRecent(pubDate) : false,
+          pubDate: pubDate || new Date(0).toISOString(),
         });
       }
     }
@@ -163,30 +194,32 @@ export class NewsService {
     const seen = new Set<string>();
 
     // Extract blog post links: /blog/something
-    const regex = /href="(\/blog\/([^"/?#]{3,80}))"/g;
+    const regex = /<a[^>]+href="(\/blog\/([^"/?#]{3,80}))"[^>]*>([\s\S]*?)<\/a>/g;
     let m: RegExpExecArray | null;
 
     while ((m = regex.exec(html)) !== null) {
-      const [, path, slug] = m;
+      const [, path, slug, innerHtml] = m;
       if (slug === '' || seen.has(slug)) continue;
+      const anchorText = this.clean(
+        innerHtml
+          .replace(/<\/(div|p|h[1-6]|span)>/gi, ' ')
+          .replace(/<br\s*\/?>/gi, ' ')
+      );
+      const dateMatch = anchorText.match(/(\d{4})[/-](\d{2})[/-](\d{2})/);
+      if (!dateMatch) continue;
       seen.add(slug);
 
-      const after = html.slice(m.index, m.index + 600);
       const titleMatch =
-        after.match(/<h[123][^>]*>([^<]{5,120})<\/h[123]>/) ||
-        after.match(/class="[^"]*title[^"]*"[^>]*>([^<]{5,120})</) ||
-        after.match(/>([A-Z][a-zA-Z0-9\s\-:,\.]{10,100})</);
+        innerHtml.match(/<h[123][^>]*>([^<]{5,120})<\/h[123]>/) ||
+        innerHtml.match(/class="[^"]*title[^"]*"[^>]*>([^<]{5,120})</) ||
+        innerHtml.match(/>([A-Z][a-zA-Z0-9\s:,. -]{5,100})</);
 
       let title = (titleMatch?.[1] || '').trim();
       if (!title || title.length < 5) {
         title = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       }
 
-      // Date extraction
-      const dateMatch = after.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
-      const pubDate = dateMatch
-        ? new Date(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`).toISOString()
-        : new Date().toISOString();
+      const pubDate = this.normalizeDate(`${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`);
 
       if (title.length > 3) {
         articles.push({
@@ -194,8 +227,8 @@ export class NewsService {
           source: 'kimi',
           url: `https://www.kimi.com${path}`,
           summary: `Blog Kimi: ${title}`,
-          isNew: this.isRecent(pubDate),
-          pubDate,
+          isNew: pubDate ? this.isRecent(pubDate) : false,
+          pubDate: pubDate || new Date(0).toISOString(),
         });
       }
     }
@@ -236,10 +269,20 @@ export class NewsService {
       .substring(0, 500);
   }
 
+  private normalizeDate(date?: string): string | null {
+    if (!date) return null;
+    const parsed = new Date(date);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  }
+
+  private toTimestamp(date?: string): number {
+    return this.normalizeDate(date) ? new Date(date as string).getTime() : 0;
+  }
+
   private isRecent(date?: string): boolean {
     if (!date) return false;
     const diffH = (Date.now() - new Date(date).getTime()) / 3600000;
-    return diffH < 72;
+    return diffH < 24;
   }
 
   private async cacheNews(items: any[]): Promise<void> {
@@ -256,6 +299,21 @@ export class NewsService {
               summary: (item.summary || '').substring(0, 500),
               pubDate: new Date(item.pubDate || new Date()),
               isNew: item.isNew ?? false,
+              categories: (item.categories || '').substring(0, 200),
+              author: (item.author || '').substring(0, 100),
+            },
+          });
+        } else {
+          await prisma.aiNewsItem.update({
+            where: { id: exists.id },
+            data: {
+              title: item.title.substring(0, 255),
+              source: item.source,
+              summary: (item.summary || '').substring(0, 500),
+              isNew: item.isNew ?? false,
+              categories: (item.categories || '').substring(0, 200),
+              author: (item.author || '').substring(0, 100),
+              fetchedAt: new Date(),
             },
           });
         }
@@ -265,7 +323,7 @@ export class NewsService {
     }
   }
 
-  async getCachedNews(limit: number = 20): Promise<any[]> {
+  async getCachedNews(limit = 20): Promise<any[]> {
     try {
       return await prisma.aiNewsItem.findMany({
         take: limit,

@@ -100,15 +100,17 @@ model YoutubeVideo {
 }
 
 model AiNewsItem {
-  id        String   @id @default(cuid())
-  title     String
-  source    String
-  url       String
-  summary   String
-  pubDate   DateTime @default(now())
-  isNew     Boolean  @default(false)
-  fetchedAt DateTime @default(now())
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  title      String
+  source     String
+  url        String
+  summary    String
+  pubDate    DateTime @default(now())
+  isNew      Boolean  @default(false)
+  categories String   @default("")
+  author     String   @default("")
+  fetchedAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@index([pubDate])
   @@index([fetchedAt])

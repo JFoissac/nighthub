@@ -10,7 +10,7 @@ export class AiNewsService {
       source: 'openai',
       url: 'https://openai.com/blog',
       summary: 'GPT-5 shows unprecedented reasoning capabilities across multiple benchmarks.',
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
+      pubDate: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     },
     {
       id: '2',
@@ -18,7 +18,7 @@ export class AiNewsService {
       source: 'anthropic',
       url: 'https://anthropic.com/news',
       summary: 'Claude 4 introduces multi-modal reasoning and extended context windows.',
-      timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000),
+      pubDate: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
     },
     {
       id: '3',
@@ -26,7 +26,7 @@ export class AiNewsService {
       source: 'kimi',
       url: 'https://kimi.moonshot.cn',
       summary: 'The new k2 model achieves SOTA on SWE-bench and HumanEval benchmarks.',
-      timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
+      pubDate: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
     },
   ]);
 

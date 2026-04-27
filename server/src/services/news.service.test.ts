@@ -5,7 +5,11 @@ vi.mock('../db/prisma.client', () => ({
     aiNewsItem: {
       findFirst: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue({}),
+      update: vi.fn().mockResolvedValue({}),
       findMany: vi.fn().mockResolvedValue([]),
+    },
+    userPreference: {
+      findFirst: vi.fn().mockResolvedValue({ customRssFeeds: '' }),
     },
   },
 }));
@@ -42,11 +46,12 @@ const htmlAnthropicNews = `
 
 const htmlKimiBlog = `
 <html><body>
-<a href="/blog/kimi-k3">
-  <h2>Kimi K3 Launch</h2>
+<a href="/blog/kimi-k3" class="nav-link">
+  <div class="dropdown-menu-item-title">Kimi K3 Launch</div>
 </a>
 <a href="/blog/new-benchmark">
-  <h3>New Benchmark 2026/04/01</h3>
+  <div class="title">New Benchmark</div>
+  <div>2026/04/01</div>
 </a>
 </body></html>
 `;
@@ -128,6 +133,17 @@ describe('NewsService', () => {
       const kimiItems = news.filter(n => n.source === 'kimi');
       expect(kimiItems.length).toBeGreaterThan(0);
       expect(kimiItems[0].url).toContain('kimi.com/blog/');
+    });
+
+    it('ignores Kimi links that do not include a visible publication date', async () => {
+      (global.fetch as any)
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve('<html></html>') }) // anthropic
+        .mockResolvedValueOnce({ ok: true, text: () => Promise.resolve(htmlKimiBlog) }); // kimi
+
+      const news = await service.fetchAiNews();
+      const kimiItems = news.filter(n => n.source === 'kimi');
+      expect(kimiItems.some(item => item.url.endsWith('/blog/kimi-k3'))).toBe(false);
+      expect(kimiItems.some(item => item.url.endsWith('/blog/new-benchmark'))).toBe(true);
     });
   });
 

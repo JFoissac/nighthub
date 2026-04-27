@@ -3,11 +3,12 @@
   "mcp": {
     "nx-mcp": {
       "type": "local",
-      "command": [
-        "npx",
-        "nx",
-        "mcp"
-      ],
+      "command": ["npx", "nx", "mcp"],
+      "enabled": true
+    },
+    "open-browser-control": {
+      "type": "local",
+      "command": ["npx", "-y", "open-browser-control"],
       "enabled": true
     }
   }

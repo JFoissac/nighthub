@@ -18,39 +18,49 @@ export class InfiniteScrollDirective implements OnInit, OnDestroy {
   /** Emitted when the host element becomes visible in its scroll container */
   scrolledToEnd = output<void>();
 
-  private observer: IntersectionObserver | null = null;
-  /** Skip the first intersection event fired on initial mount */
-  private skipFirst = true;
+  private removeScrollListener: (() => void) | null = null;
+  private isTicking = false;
+  private readonly bottomOffsetPx = 24;
 
   constructor(private el: ElementRef<HTMLElement>) {}
 
   ngOnInit() {
-    console.log('[InfiniteScroll] mounted on', this.el.nativeElement.parentElement?.className?.substring(0, 60));
-    this.observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        if (!entry?.isIntersecting) return;
-        if (this.skipFirst) {
-          console.log(`[InfiniteScroll] skipping initial fire`);
-          this.skipFirst = false;
-          return;
+    const scrollRoot = this.findScrollRoot(this.el.nativeElement);
+    if (!scrollRoot) return;
+
+    const onScroll = () => {
+      if (this.isTicking) return;
+      this.isTicking = true;
+
+      requestAnimationFrame(() => {
+        this.isTicking = false;
+        if (this.disabled()) return;
+
+        const distanceToBottom = scrollRoot.scrollHeight - (scrollRoot.scrollTop + scrollRoot.clientHeight);
+        if (distanceToBottom <= this.bottomOffsetPx) {
+          this.scrolledToEnd.emit();
         }
-        if (this.disabled()) {
-          console.log(`[InfiniteScroll] disabled, ignoring intersection`);
-          return;
-        }
-        console.log('[InfiniteScroll] → emitting scrolledToEnd');
-        this.scrolledToEnd.emit();
-      },
-      {
-        threshold: 0.1,
-      }
-    );
-    this.observer.observe(this.el.nativeElement);
+      });
+    };
+
+    scrollRoot.addEventListener('scroll', onScroll, { passive: true });
+    this.removeScrollListener = () => scrollRoot.removeEventListener('scroll', onScroll);
   }
 
   ngOnDestroy() {
-    this.observer?.disconnect();
-    this.observer = null;
+    this.removeScrollListener?.();
+    this.removeScrollListener = null;
+  }
+
+  private findScrollRoot(start: HTMLElement): HTMLElement | null {
+    let parent = start.parentElement;
+    while (parent) {
+      const style = getComputedStyle(parent);
+      const overflowY = style.overflowY;
+      const canScroll = overflowY === 'auto' || overflowY === 'scroll';
+      if (canScroll) return parent;
+      parent = parent.parentElement;
+    }
+    return null;
   }
 }

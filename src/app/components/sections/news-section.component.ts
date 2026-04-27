@@ -1,11 +1,73 @@
-import { Component, input, output, signal, computed, inject } from '@angular/core';
+import { Component, output, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { AiNewsItem } from '../../models';
 import { NewsStore } from '../../stores/news.store';
 import { ApiService } from '../../services/api.service';
 import { AiNewsCardComponent } from '../ai-news/ai-news-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
 import { RssDetectModalComponent } from '../rss-detect-modal/rss-detect-modal.component';
+import { AiNewsItem } from '../../models';
+
+const AUTHORITY_SCORE: Record<string, number> = {
+  'anthropic': 1.0,
+  'openai': 1.0,
+  'kimi': 1.0,
+  'next.ink': 0.7,
+  'numerama': 0.7,
+  'frandroid': 0.4,
+};
+
+const HIGH_SIGNAL_KEYWORDS = [
+  'launch', 'release', 'announce', 'introduce', 'reveal',
+  'gpt', 'claude', 'gemini', 'llama', 'mistral', 'kimi',
+  'benchmark', 'study', 'research', ' breakthrough', '超越',
+  'interview', 'ceo', 'founder', 'exclusive',
+  'safety', 'alignment', 'policy', 'regulation',
+  'api', 'model', 'training', 'inference',
+];
+
+const TRUMP_TOPIC_KEYWORDS = [
+  'tariff', 'trade', 'china', 'nuclear', 'war', 'military',
+  'election', 'congress', 'supreme court', 'vote',
+  'economy', 'inflation', 'billion', 'tax', 'fed',
+  'ukraine', 'israel', 'iran', 'russia', 'nato',
+  'border', 'immigration', 'deport',
+  'sanctions', 'executive order', 'decree',
+];
+
+const RELEVANCE_HALFLIFE_HOURS = 4;
+const RECENCY_WEIGHT = 0.40;
+const AUTHORITY_WEIGHT = 0.30;
+const QUALITY_WEIGHT = 0.20;
+const TOPIC_BOOST_WEIGHT = 0.10;
+
+function calculateRelevanceScore(item: AiNewsItem, trumpTrendingTopics: string[]): number {
+  const hoursOld = (Date.now() - new Date(item.pubDate).getTime()) / 3_600_000;
+  const recency = Math.pow(0.5, hoursOld / RELEVANCE_HALFLIFE_HOURS);
+
+  const authority = AUTHORITY_SCORE[item.source] ?? 0.5;
+
+  const hasSummary = item.summary && item.summary.length > 20 ? 0.2 : 0;
+  const titleLen = item.title.length;
+  const lenScore = titleLen < 20 ? 0.05 : titleLen > 120 ? 0.1 : titleLen > 80 ? 0.15 : 0.2;
+  const titleLower = item.title.toLowerCase();
+  const keywordBoost = HIGH_SIGNAL_KEYWORDS.some(k => titleLower.includes(k)) ? 0.2 : 0;
+  const quality = Math.min(0.4, hasSummary + lenScore + keywordBoost);
+
+  let topicBoost = 0;
+  if (trumpTrendingTopics.length > 0) {
+    const text = `${item.title} ${item.summary || ''} ${item.categories || ''}`.toLowerCase();
+    const matchCount = trumpTrendingTopics.filter(t => text.includes(t)).length;
+    topicBoost = Math.min(0.3, matchCount * 0.05);
+  }
+
+  const isNewBonus = item.isNew ? 0.1 : 0;
+
+  return (recency * RECENCY_WEIGHT)
+    + (authority * AUTHORITY_WEIGHT)
+    + (quality * QUALITY_WEIGHT)
+    + (topicBoost * TOPIC_BOOST_WEIGHT)
+    + isNewBonus;
+}
 
 @Component({
   selector: 'app-news-section',
@@ -19,7 +81,7 @@ import { RssDetectModalComponent } from '../rss-detect-modal/rss-detect-modal.co
           <span class="font-label-caps text-[9px] text-text-muted">({{ sortedNews().length }})</span>
         </div>
         <div class="flex items-center gap-2">
-          <span class="font-label-caps text-[9px] text-text-muted">ANTHROPIC · OPENAI · KIMI · RSS</span>
+          <span class="font-label-caps text-[9px] text-text-muted">ANTHROPIC · OPENAI · KIMI · NEXT · NUMERAMA · FRANDROID</span>
           @if (store.isLoading()) {
             <svg class="w-3.5 h-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
@@ -91,18 +153,49 @@ export class NewsSectionComponent {
 
   sortMode = signal<'date' | 'relevance'>('date');
   showRssDetect = signal(false);
+  trumpTrendingTopics = signal<string[]>([]);
+
+  constructor() {
+    this.loadTrumpTopics();
+  }
+
+  private loadTrumpTopics() {
+    this.apiService.getTrumpTweets(10).subscribe({
+      next: (tweets) => {
+        const topics = new Set<string>();
+        tweets.forEach((t: any) => {
+          if (t.keywords) {
+            t.keywords.split(',').forEach((k: string) => topics.add(k.trim().toLowerCase()));
+          }
+          if (t.criticality >= 7) {
+            TRUMP_TOPIC_KEYWORDS.forEach(kw => {
+              if ((t.content || '').toLowerCase().includes(kw)) topics.add(kw);
+            });
+          }
+        });
+        this.trumpTrendingTopics.set([...topics]);
+      },
+      error: () => this.trumpTrendingTopics.set([]),
+    });
+  }
 
   sortedNews = computed(() => {
     const items = this.store.news();
     const mode = this.sortMode();
     if (mode === 'date') {
       return [...items].sort((a, b) => {
-        const dateA = new Date(a.timestamp?.getTime() || 0);
-        const dateB = new Date(b.timestamp?.getTime() || 0);
-        return dateB.getTime() - dateA.getTime();
+        const dateA = new Date((a as any).pubDate || 0).getTime();
+        const dateB = new Date((b as any).pubDate || 0).getTime();
+        if (Number.isNaN(dateA)) return 1;
+        if (Number.isNaN(dateB)) return -1;
+        return dateB - dateA;
       });
     }
-    return items;
+    const topics = this.trumpTrendingTopics();
+    return [...items]
+      .map(item => ({ item, score: calculateRelevanceScore(item, topics) }))
+      .sort((a, b) => b.score - a.score)
+      .map(({ item }) => item);
   });
 
   toggleSort() {

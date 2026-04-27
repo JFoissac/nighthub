@@ -108,7 +108,7 @@ import { TwitchStream, YoutubeVideo } from '../../models';
         } @else {
 
           <!-- Top Row: Twitter (5-col) + YouTube (7-col) -->
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <app-twitter-section></app-twitter-section>
             <app-youtube-section
               (selectVideo)="selectedVideo.set($event)"
