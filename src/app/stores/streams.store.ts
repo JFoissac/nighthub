@@ -1,56 +1,52 @@
-import { computed, inject } from '@angular/core';
-import { signalStore, withState, withProps, withComputed, withMethods, patchState } from '@ngrx/signals';
-import { ApiService } from '../services/api.service';
+import { computed } from '@angular/core';
+import { signalStore, withState, withComputed, withMethods, patchState } from '@ngrx/signals';
 import { TwitchStream } from '../models';
 
 export interface StreamsState {
   items: TwitchStream[];
+  gameFilter: string | null;
   loading: boolean;
   error: string | null;
 }
 
 const initialState: StreamsState = {
   items: [],
+  gameFilter: null,
   loading: false,
   error: null,
 };
 
 export const StreamsStore = signalStore(
   { providedIn: 'root' },
-
   withState(initialState),
-
-  withProps(() => ({
-    _api: inject(ApiService),
-  })),
-
   withComputed((store) => ({
     streams: computed(() => store.items()),
-    isLoading: computed(() => store.loading()),
-    hasError: computed(() => store.error() !== null),
-    count: computed(() => store.items().length),
-    liveCount: computed(() => store.items().filter(s => s.isLive).length),
-  })),
-
-  withMethods((store) => ({
-    reload() {
-      patchState(store, { loading: true, error: null });
-      store._api.getStreams().subscribe({
-        next: (items) => {
-          patchState(store, { items, loading: false });
-        },
-        error: (err) => {
-          patchState(store, { loading: false, error: String(err) });
-        },
+    filteredStreams: computed(() => {
+      const filter = store.gameFilter();
+      if (!filter) return store.items();
+      return store.items().filter(s => s.gameName === filter);
+    }),
+    gameList: computed(() => {
+      const games = new Map<string, number>();
+      store.items().forEach(s => {
+        games.set(s.gameName, (games.get(s.gameName) || 0) + 1);
       });
-    },
-
+      return [...games.entries()]
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+    }),
+    count: computed(() => store.items().length),
+    isLoading: computed(() => store.loading()),
+  })),
+  withMethods((store) => ({
     setItems(items: TwitchStream[]) {
       patchState(store, { items });
     },
-
-    clearError() {
-      patchState(store, { error: null });
+    setGameFilter(game: string | null) {
+      patchState(store, { gameFilter: game });
+    },
+    reload() {
+      patchState(store, { loading: true, error: null });
     },
   }))
 );
