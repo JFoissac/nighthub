@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tweet {
+  id           String   @id @default(cuid())
+  twitterId    String   @unique
+  authorName   String
+  authorHandle String
+  authorAvatar String
+  content      String
+  mediaUrl     String?
+  likes        Int      @default(0)
+  retweets     Int      @default(0)
+  fetchedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([fetchedAt])
+}
+
+model TrumpTweet {
+  id           String   @id @default(cuid())
+  tweetId      String   @unique
+  content      String
+  type         String   @default("tweet")
+  criticality  Int      @default(0)
+  sentiment    String   @default("neutral")
+  keywords     String   @default("")
+  likes        Int      @default(0)
+  retweets     Int      @default(0)
+  isBreaking   Boolean  @default(false)
+  url          String   @default("")
+  tweetDate    DateTime @default(now())
+  fetchedAt    DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([fetchedAt])
+  @@index([criticality])
+}
+
+model TwitchStream {
+  id            String   @id @default(cuid())
+  twitchId      String   @unique
+  title         String
+  thumbnailUrl  String
+  viewerCount   Int      @default(0)
+  channelName   String
+  channelAvatar String
+  gameName      String
+  isLive        Boolean  @default(true)
+  url           String
+  fetchedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([isLive, fetchedAt])
+}
+
+model TwitchFollow {
+  id            String   @id @default(cuid())
+  twitchUserId  String
+  channelId     String
+  channelName   String
+  channelAvatar String
+  gameName      String   @default("")
+  isLive        Boolean  @default(false)
+  fetchedAt     DateTime @default(now())
+
+  @@unique([twitchUserId, channelId])
+  @@index([twitchUserId])
+}
+
+model YoutubeVideo {
+  id            String   @id @default(cuid())
+  youtubeId     String   @unique
+  title         String
+  thumbnailUrl  String
+  channelName   String
+  channelAvatar String
+  channelId     String   @default("")
+  channelHandle String   @default("")
+  duration      String
+  views         Int      @default(0)
+  url           String
+  isNew         Boolean  @default(false)
+  isLive        Boolean  @default(false)
+  publishedAt   DateTime @default(now())
+  fetchedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([fetchedAt])
+  @@index([publishedAt])
+  @@index([channelId])
+  @@index([channelHandle])
+  @@index([isLive, fetchedAt])
+}
+
+model AiNewsItem {
+  id         String   @id @default(cuid())
+  title      String
+  source     String
+  url        String
+  summary    String
+  pubDate    DateTime @default(now())
+  isNew      Boolean  @default(false)
+  categories String   @default("")
+  author     String   @default("")
+  fetchedAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([pubDate])
+  @@index([fetchedAt])
+  @@index([source])
+}
+
+model WeatherCache {
+  id             String   @id @default(cuid())
+  city           String   @default("Caen")
+  temp           Int
+  tempMin        Int      @default(0)
+  tempMax        Int      @default(0)
+  condition      String
+  wind           Int
+  humidity       Int
+  precipitation  Int
+  icon           String
+  forecastDate   DateTime
+  dayIndex       Int      @default(0)
+  fetchedAt      DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  @@index([city, fetchedAt])
+  @@index([city, dayIndex])
+}
+
+model OAuthToken {
+  id           String   @id @default(cuid())
+  provider     String
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  userId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([provider, userId])
+}
+
+model UserPreference {
+  id                  String   @id @default(cuid())
+  weatherCity         String   @default("Caen")
+  twitchFollows       String   @default("")
+  twitchUsername      String   @default("")
+  youtubeChannels     String   @default("")
+  youtubeChannelIds   String   @default("")
+  twitterUsername     String   @default("")
+  twitterAccounts     String   @default("")
+  trumpMinCriticality Int      @default(0)
+  customRssFeeds      String   @default("")
+  refreshInterval     Int      @default(30)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model ContentScore {
+  id          String   @id @default(cuid())
+  contentId   String
+  contentType String
+  score       Float    @default(0)
+  calculatedAt DateTime @default(now())
+
+  @@unique([contentId, contentType])
+}
