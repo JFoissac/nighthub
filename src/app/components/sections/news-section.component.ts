@@ -1,10 +1,11 @@
 import { Component, output, signal, computed, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NewsStore } from '../../stores/news.store';
-import { ApiService } from '../../services/api.service';
+import { ApiService, ExtractedNewsArticle } from '../../services/api.service';
 import { AiNewsCardComponent } from '../ai-news/ai-news-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
 import { RssDetectModalComponent } from '../rss-detect-modal/rss-detect-modal.component';
+import { NewsArticleReaderPopupComponent } from '../news-article-reader-popup/news-article-reader-popup.component';
 import { AiNewsItem } from '../../models';
 
 const AUTHORITY_SCORE: Record<string, number> = {
@@ -88,7 +89,7 @@ function calculateRelevanceScore(
 @Component({
   selector: 'app-news-section',
   standalone: true,
-  imports: [CommonModule, AiNewsCardComponent, InfiniteScrollDirective, RssDetectModalComponent],
+  imports: [CommonModule, AiNewsCardComponent, InfiniteScrollDirective, RssDetectModalComponent, NewsArticleReaderPopupComponent],
   template: `
     <section class="neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 150ms">
       <div class="px-4 py-3 border-b border-[#1E1E2E] flex items-center justify-between bg-[#131318]/40 flex-shrink-0">
@@ -134,7 +135,10 @@ function calculateRelevanceScore(
       </div>
       <div class="flex-1 overflow-y-auto" style="max-height: 500px">
         @for (item of sortedNews(); track item.id || $index) {
-          <app-ai-news-card [item]="item"></app-ai-news-card>
+          <app-ai-news-card
+            [item]="item"
+            (articleClick)="onArticleClick($event, item)"
+          ></app-ai-news-card>
         }
         <div
           appInfiniteScroll
@@ -159,6 +163,13 @@ function calculateRelevanceScore(
         (feedAdded)="onFeedAdded($event)"
       ></app-rss-detect-modal>
     }
+
+    @if (readerArticle()) {
+      <app-news-article-reader-popup
+        [article]="readerArticle()!"
+        (close)="closeReaderPopup()"
+      ></app-news-article-reader-popup>
+    }
   `,
 })
 export class NewsSectionComponent {
@@ -169,6 +180,7 @@ export class NewsSectionComponent {
 
   sortMode = signal<'date' | 'relevance'>('date');
   showRssDetect = signal(false);
+  readerArticle = signal<ExtractedNewsArticle | null>(null);
   trumpKeywords = signal<string[]>([]);
   streamGames = signal<string[]>([]);
   videoCategories = signal<string[]>([]);
@@ -235,5 +247,30 @@ export class NewsSectionComponent {
   onFeedAdded(feedUrl: string) {
     this.showRssDetect.set(false);
     this.feedAdded.emit(feedUrl);
+  }
+
+  onArticleClick(event: Event, item: AiNewsItem) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!item.url) {
+      return;
+    }
+
+    this.apiService.extractNewsArticle(item.url).subscribe({
+      next: (article) => this.readerArticle.set(article),
+      error: (err) => {
+        console.error('[News] extract failed:', err);
+        this.openOriginalArticle(item.url);
+      },
+    });
+  }
+
+  closeReaderPopup() {
+    this.readerArticle.set(null);
+  }
+
+  private openOriginalArticle(url: string) {
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 }

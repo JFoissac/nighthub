@@ -38,8 +38,8 @@ import { TwitchStream } from '../../models';
           <div class="min-w-0 flex-1">
             <p class="font-label-caps text-[11px] text-text-primary truncate">{{ stream().channelName }}</p>
             <div class="flex items-center gap-1.5 mt-0.5">
-              <span class="status-pulse status-pulse-red"></span>
-              <span class="font-label-caps text-[9px] text-text-muted">LIVE</span>
+              <span class="status-pulse" [class.status-pulse-red]="stream().isLive"></span>
+              <span class="font-label-caps text-[9px] text-text-muted">{{ stream().isLive ? 'LIVE' : 'OFFLINE' }}</span>
               @if (stream().gameName) {
                 <span class="font-label-caps text-[9px] text-text-muted">· {{ stream().gameName }}</span>
               }
@@ -79,7 +79,11 @@ import { TwitchStream } from '../../models';
         <!-- Stream title + stats -->
         <div class="px-4 py-2 border-b border-[#1E1E2E]/50 bg-[#131318]/40 flex-shrink-0">
           <p class="text-[13px] text-text-secondary line-clamp-1">{{ stream().title }}</p>
-          <span class="font-label-caps text-[9px] text-text-muted">{{ stream().viewerCount | number }} VIEWERS</span>
+          @if (stream().isLive) {
+            <span class="font-label-caps text-[9px] text-text-muted">{{ stream().viewerCount | number }} VIEWERS</span>
+          } @else {
+            <span class="font-label-caps text-[9px] text-text-muted">OFFLINE</span>
+          }
         </div>
 
         <!-- Twitch Player -->
@@ -104,6 +108,8 @@ export class StreamPlayerPanelComponent {
 
   panelWidth = signal(420);
   isResizing = signal(false);
+  private cachedPlayerKey: string | null = null;
+  private cachedPlayerUrl: SafeResourceUrl | null = null;
 
   private minWidth = 280;
   private maxWidth = 900;
@@ -150,7 +156,13 @@ export class StreamPlayerPanelComponent {
     const s = this.stream();
     const login = s.channelLogin || s.channelName.toLowerCase();
     const parent = window.location.hostname;
+    const key = `${login}|${parent}`;
+    if (this.cachedPlayerUrl && this.cachedPlayerKey === key) {
+      return this.cachedPlayerUrl;
+    }
     const url = `https://player.twitch.tv/?channel=${encodeURIComponent(login)}&parent=${parent}&autoplay=true&muted=false`;
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    this.cachedPlayerKey = key;
+    this.cachedPlayerUrl = this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    return this.cachedPlayerUrl;
   }
 }

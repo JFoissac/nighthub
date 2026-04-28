@@ -22,6 +22,9 @@ import { YoutubeVideo } from '../../models';
             <p class="text-[13px] font-medium text-text-primary line-clamp-1">{{ video().title }}</p>
             <div class="flex items-center gap-2 mt-0.5">
               <span class="font-label-caps text-[9px] text-secondary">{{ video().channelName }}</span>
+              @if (displayHandle()) {
+                <span class="font-label-caps text-[9px] text-primary">{{ displayHandle() }}</span>
+              }
               @if (video().views) {
                 <span class="font-label-caps text-[9px] text-text-muted">{{ formatViews(video().views) }}</span>
               }
@@ -84,6 +87,11 @@ export class VideoPlayerPopupComponent {
     if (v.youtubeId) return v.youtubeId;
     const match = v.url.match(/[?&]v=([^&]+)/);
     return match?.[1] || '';
+  }
+
+  displayHandle(): string {
+    const h = this.video().channelHandle || '';
+    return h.startsWith('@') ? h : '';
   }
 
   formatViews(n: number): string {

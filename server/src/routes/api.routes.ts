@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { weatherService } from '../services/weather.service';
-import { newsService } from '../services/news.service';
+import { newsService, ARTICLE_EXTRACTION_FAILED, ARTICLE_URL_NOT_ALLOWED } from '../services/news.service';
 import { twitterService } from '../services/twitter.service';
 import { youtubeService } from '../services/youtube.service';
 import { twitchService } from '../services/twitch.service';
@@ -42,7 +42,21 @@ function validateBody<T extends z.ZodTypeAny>(schema: T) {
 const twitchImportSchema = z.object({ channels: z.array(z.string()) });
 const youtubeImportListSchema = z.object({ channels: z.array(z.string()) });
 const youtubeImportTakeoutSchema = z.object({ channels: z.array(z.object({ channelId: z.string() })) });
+const youtubeRemapSchema = z.object({
+  handle: z.string().min(1),
+  channelId: z.string().min(1),
+});
 const detectFeedSchema = z.object({ url: z.string().startsWith('http') });
+const extractNewsSchema = z.object({
+  url: z.string().url().refine((value) => {
+    try {
+      const u = new URL(value);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }, { message: 'Invalid URL protocol' }),
+});
 const preferencesSchema = z.object({
   weatherCity: z.string().optional(),
   twitchFollows: z.string().optional(),
@@ -157,6 +171,43 @@ async function getVideos(req: Request, res: Response) {
   }
 }
 
+async function getYoutubeRemapReport(_req: Request, res: Response) {
+  try {
+    const report = await youtubeService.getRemapReport();
+    res.json(report);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to build YouTube remap report' });
+  }
+}
+
+async function searchYoutubeChannels(req: Request, res: Response) {
+  try {
+    const query = String(req.query.q || req.query.query || '').trim();
+    if (query.length < 2) {
+      res.status(400).json({ error: 'Query must be at least 2 characters' });
+      return;
+    }
+    const candidates = await youtubeService.searchChannelsByName(query);
+    res.json({ query, candidates });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to search YouTube channels' });
+  }
+}
+
+async function remapYoutubeChannel(req: Request, res: Response) {
+  try {
+    const { handle, channelId } = (req as any).validatedBody as z.infer<typeof youtubeRemapSchema>;
+    const result = await youtubeService.remapHandleToChannelId(handle, channelId);
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    if (error?.message === 'Invalid handle' || error?.message === 'Invalid channelId') {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to remap YouTube channel' });
+  }
+}
+
 async function getNews(req: Request, res: Response) {
   try {
     const limit = validateLimit(req.query.limit);
@@ -182,12 +233,17 @@ async function getDashboardStream(_req: Request, res: Response) {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
   });
 
   const sendEvent = (data: any, event?: string) => {
     if (event) res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+
+  const heartbeatId = setInterval(() => {
+    sendEvent({ ts: Date.now() }, 'heartbeat');
+  }, 4000);
 
   try {
     const data = await aggregatorService.getDashboardData((step: string) => {
@@ -196,6 +252,8 @@ async function getDashboardStream(_req: Request, res: Response) {
     sendEvent(data, 'dashboard');
   } catch (error) {
     sendEvent({ error: 'Failed to fetch dashboard data' }, 'error');
+  } finally {
+    clearInterval(heartbeatId);
   }
 
   res.end();
@@ -257,6 +315,28 @@ async function detectFeed(req: Request, res: Response) {
     res.json({ feedUrl });
   } catch (error) {
     res.status(500).json({ error: 'Failed to detect feed' });
+  }
+}
+
+async function extractNewsArticle(req: Request, res: Response) {
+  const { url } = (req as any).validatedBody as z.infer<typeof extractNewsSchema>;
+  try {
+    const article = await newsService.extractArticleText(url);
+    res.json(article);
+  } catch (error: any) {
+    if (error?.message === ARTICLE_URL_NOT_ALLOWED) {
+      res.status(400).json({ error: 'URL_NOT_ALLOWED' });
+      return;
+    }
+    if (error?.message === ARTICLE_EXTRACTION_FAILED) {
+      res.status(422).json({
+        error: ARTICLE_EXTRACTION_FAILED,
+        fallback: true,
+        url,
+      });
+      return;
+    }
+    res.status(500).json({ error: 'Failed to extract article text' });
   }
 }
 
@@ -365,6 +445,9 @@ router.get('/follows', getFollows);
 router.post('/twitch/import-list', validateBody(twitchImportSchema), importTwitchList);
 router.post('/youtube/import-list', validateBody(youtubeImportListSchema), importYoutubeList);
 router.post('/youtube/import-takeout', validateBody(youtubeImportTakeoutSchema), importYoutubeTakeout);
+router.get('/youtube/remap/report', getYoutubeRemapReport);
+router.get('/youtube/remap/search', searchYoutubeChannels);
+router.post('/youtube/remap', validateBody(youtubeRemapSchema), remapYoutubeChannel);
 
 router.get('/videos', getVideos);
 router.get('/news', getNews);
@@ -379,6 +462,7 @@ router.post('/refresh/twitch', refreshTwitch);
 router.post('/refresh/trump', refreshTrump);
 
 router.post('/sites/detect-feed', validateBody(detectFeedSchema), detectFeed);
+router.post('/news/extract', validateBody(extractNewsSchema), extractNewsArticle);
 
 router.get('/twitter/account-stats', getTwitterAccountStats);
 

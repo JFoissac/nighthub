@@ -38,6 +38,44 @@ export interface UserPreferences {
   themeOledBlack: boolean;
 }
 
+export interface YoutubeRemapHandleDiagnostic {
+  handle: string;
+  resolvedChannelId: string | null;
+  status: 'ok' | 'unresolved' | 'missingStoredId';
+  storedMatch: boolean;
+  lastSeenChannelName: string;
+  lastSeenChannelHandle: string;
+}
+
+export interface YoutubeOrphanChannelDiagnostic {
+  channelId: string;
+  lastSeenChannelName: string;
+  lastSeenChannelHandle: string;
+}
+
+export interface YoutubeRemapReport {
+  generatedAt: string;
+  handles: YoutubeRemapHandleDiagnostic[];
+  orphanChannelIds: YoutubeOrphanChannelDiagnostic[];
+  storedChannelIds: string[];
+  resolvedChannelIds: string[];
+}
+
+export interface YoutubeChannelCandidate {
+  channelId: string;
+  title: string;
+  handle: string;
+  url: string;
+  source: 'youtube-api' | 'cache';
+}
+
+export interface ExtractedNewsArticle {
+  title: string;
+  source: string;
+  content: string;
+  url: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   constructor(private http: HttpClient) {}
@@ -74,13 +112,36 @@ export class ApiService {
   getDashboardStream(onProgress: (step: string) => void): Observable<DashboardData> {
     return new Observable(subscriber => {
       const es = new EventSource(`${this.baseUrl}/dashboard/stream`);
+      const SSE_TIMEOUT_MS = 45000;
+      let done = false;
+      let timeoutId: any;
+
+      const armTimeout = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          if (done) return;
+          done = true;
+          es.close();
+          subscriber.error(new Error('SSE timeout'));
+        }, SSE_TIMEOUT_MS);
+      };
+
+      armTimeout();
 
       es.addEventListener('progress', (event: MessageEvent) => {
         const data = JSON.parse(event.data);
         onProgress(data.step);
+        armTimeout();
+      });
+
+      es.addEventListener('heartbeat', () => {
+        armTimeout();
       });
 
       es.addEventListener('dashboard', (event: MessageEvent) => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
         const data = JSON.parse(event.data);
         subscriber.next(data);
         subscriber.complete();
@@ -88,11 +149,18 @@ export class ApiService {
       });
 
       es.addEventListener('error', () => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
         es.close();
         subscriber.error(new Error('SSE connection failed'));
       });
 
-      return () => es.close();
+      return () => {
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        es.close();
+      };
     });
   }
 
@@ -129,6 +197,12 @@ export class ApiService {
 
   getNews(limit: number = 20): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/news?limit=${limit}`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  extractNewsArticle(url: string): Observable<ExtractedNewsArticle> {
+    return this.http.post<ExtractedNewsArticle>(`${this.baseUrl}/news/extract`, { url }).pipe(
       catchError(this.handleError)
     );
   }
@@ -238,6 +312,24 @@ export class ApiService {
   importYoutubeTakeout(channels: { channelId: string; title: string }[]): Observable<{ imported: number; total: number }> {
     return this.http.post<{ imported: number; total: number }>(
       `${this.baseUrl}/youtube/import-takeout`, { channels }
+    ).pipe(catchError(this.handleError));
+  }
+
+  getYoutubeRemapReport(): Observable<YoutubeRemapReport> {
+    return this.http.get<YoutubeRemapReport>(`${this.baseUrl}/youtube/remap/report`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  searchYoutubeChannels(query: string): Observable<{ query: string; candidates: YoutubeChannelCandidate[] }> {
+    return this.http.get<{ query: string; candidates: YoutubeChannelCandidate[] }>(
+      `${this.baseUrl}/youtube/remap/search?q=${encodeURIComponent(query)}`
+    ).pipe(catchError(this.handleError));
+  }
+
+  remapYoutubeChannel(handle: string, channelId: string): Observable<{ success: boolean; handle: string; channelId: string }> {
+    return this.http.post<{ success: boolean; handle: string; channelId: string }>(
+      `${this.baseUrl}/youtube/remap`, { handle, channelId }
     ).pipe(catchError(this.handleError));
   }
 }

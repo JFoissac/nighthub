@@ -144,7 +144,7 @@ import { TweetsStore } from '../../stores/tweets.store';
         @if (selectedStream()) {
           <app-stream-player-panel
             [stream]="selectedStream()!"
-            (close)="selectedStream.set(null)"
+            (close)="closeSelectedStream()"
           ></app-stream-player-panel>
         }
       </div>
@@ -168,17 +168,19 @@ export class DashboardComponent implements OnInit {
   showSettings = signal(false);
   showWeather = signal(false);
   showStreamList = signal(false);
+  selectedStreamId = signal<string | null>(null);
   selectedStream = signal<TwitchStream | null>(null);
   selectedVideo = signal<YoutubeVideo | null>(null);
   panelVideo = signal<YoutubeVideo | null>(null);
 
   @HostListener('document:keydown.escape')
   onEscape() {
+    if (this.showSettings()) { this.showSettings.set(false); return; }
     if (this.showStreamList()) { this.showStreamList.set(false); return; }
     if (this.showWeather()) { this.showWeather.set(false); return; }
     if (this.selectedVideo()) { this.selectedVideo.set(null); return; }
     if (this.panelVideo()) { this.panelVideo.set(null); return; }
-    if (this.selectedStream()) { this.selectedStream.set(null); }
+    if (this.selectedStream()) { this.closeSelectedStream(); }
   }
 
   ngOnInit() {
@@ -193,6 +195,7 @@ export class DashboardComponent implements OnInit {
         title: stream.title,
         thumbnailUrl: stream.thumbnailUrl,
         channelName: stream.channelName,
+        channelHandle: stream.channelHandle,
         channelAvatar: stream.channelAvatar,
         duration: 'LIVE',
         views: stream.viewerCount,
@@ -200,13 +203,62 @@ export class DashboardComponent implements OnInit {
         isLive: true,
       } as YoutubeVideo);
     } else {
-      this.selectedStream.set(stream);
+      this.selectedStreamId.set(stream.id);
+      this.selectedStream.update((current) => {
+        if (current && current.id === stream.id) {
+          return { ...current, ...stream };
+        }
+        return stream;
+      });
     }
+  }
+
+  closeSelectedStream() {
+    this.selectedStreamId.set(null);
+    this.selectedStream.set(null);
+  }
+
+  private applyDashboardData(data: DashboardData) {
+    this.videosStore.setItems(data.videos || []);
+    this.newsStore.setItems(data.news || []);
+    this.trumpStore.setItems(data.trump || []);
+    this.streamsStore.setItems(data.streams || []);
+    this.tweetsStore.setItems(data.tweets || []);
+    this.reconcileSelectedStream(data.streams || []);
+    this.dashboardData.set(data);
+    this.isLoading.set(false);
+  }
+
+  private reconcileSelectedStream(streams: TwitchStream[]) {
+    const selectedId = this.selectedStreamId();
+    if (!selectedId || !this.selectedStream()) return;
+
+    const refreshed = streams.find((stream) => stream.id === selectedId);
+    if (refreshed) {
+      this.selectedStream.update((current) => {
+        if (!current || current.id !== selectedId) return refreshed;
+        return { ...current, ...refreshed };
+      });
+      return;
+    }
+
+    // Keep the side panel mounted with last known stream when it disappears from refresh.
+    this.selectedStream.update((current) => {
+      if (!current || current.id !== selectedId) return current;
+      return {
+        ...current,
+        isLive: false,
+        viewerCount: 0,
+      };
+    });
   }
 
   loadDashboard() {
     console.log('[loadDashboard] START');
-    this.isLoading.set(true);
+    // Only show global loader on first load; subsequent refreshes update silently
+    if (!this.dashboardData()) {
+      this.isLoading.set(true);
+    }
     this.loadingStatus.set('CONNECTING...');
 
     this.apiService.getDashboardStream((step: string) => {
@@ -222,14 +274,7 @@ export class DashboardComponent implements OnInit {
           tweets: data.tweets?.length ?? 0,
         });
 
-        this.videosStore.setItems(data.videos || []);
-        this.newsStore.setItems(data.news || []);
-        this.trumpStore.setItems(data.trump || []);
-        this.streamsStore.setItems(data.streams || []);
-        this.tweetsStore.setItems(data.tweets || []);
-
-        this.dashboardData.set(data);
-        this.isLoading.set(false);
+        this.applyDashboardData(data);
 
         const isEmpty = !data.videos?.length && !data.tweets?.length && !data.streams?.length;
         if (isEmpty) {
@@ -251,13 +296,7 @@ export class DashboardComponent implements OnInit {
               news: data.news?.length ?? 0,
               trump: data.trump?.length ?? 0,
             });
-            this.videosStore.setItems(data.videos || []);
-            this.newsStore.setItems(data.news || []);
-            this.trumpStore.setItems(data.trump || []);
-            this.streamsStore.setItems(data.streams || []);
-            this.tweetsStore.setItems(data.tweets || []);
-            this.dashboardData.set(data);
-            this.isLoading.set(false);
+            this.applyDashboardData(data);
             const isEmpty = !data.videos?.length && !data.tweets?.length && !data.streams?.length;
             if (isEmpty) {
               this.isSyncing.set(true);
@@ -298,8 +337,17 @@ export class DashboardComponent implements OnInit {
           next: () => {
             console.log('[onFeedAdded] prefs saved, calling refreshNews...');
             this.apiService.refreshNews().subscribe({
-              next: () => { console.log('[onFeedAdded] news refreshed, reloading dashboard'); this.loadDashboard(); },
-              error: (e) => { console.error('[onFeedAdded] refreshNews error:', e); this.loadDashboard(); },
+              next: () => {
+                console.log('[onFeedAdded] news refreshed, updating news section');
+                this.apiService.getNews().subscribe({
+                  next: (news) => {
+                    this.newsStore.setItems(news || []);
+                    this.dashboardData.update((current) => current ? ({ ...current, news: news || [] }) : current);
+                  },
+                  error: (e) => console.error('[onFeedAdded] getNews error:', e),
+                });
+              },
+              error: (e) => console.error('[onFeedAdded] refreshNews error:', e),
             });
           },
           error: (e) => console.error('[onFeedAdded] savePreferences error:', e),

@@ -31,7 +31,12 @@ vi.mock('rss-parser', () => ({
   } as any,
 }));
 
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn().mockResolvedValue([]),
+}));
+
 import { NewsService } from './news.service';
+import { lookup as dnsLookup } from 'node:dns/promises';
 
 const htmlAnthropicNews = `
 <html><body>
@@ -62,6 +67,7 @@ describe('NewsService', () => {
   beforeEach(() => {
     service = new NewsService();
     vi.stubGlobal('fetch', vi.fn());
+    (dnsLookup as any).mockResolvedValue([]);
   });
 
   describe('fetchAiNews — OpenAI RSS', () => {
@@ -283,6 +289,138 @@ describe('NewsService', () => {
       (global.fetch as any).mockRejectedValue(new Error('timeout'));
       const result = await service.detectFeed('https://example.com');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('extractArticleText', () => {
+    it('returns normalized plain text paragraphs on success', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(`
+          <html>
+            <head><title>Latest AI Update</title></head>
+            <body>
+              <article>
+                <h1>Latest AI Update</h1>
+                <p>First paragraph with useful context.</p>
+                <p>Second paragraph with additional detail.</p>
+              </article>
+            </body>
+          </html>
+        `),
+      });
+
+      const result = await service.extractArticleText('https://example.com/news/ai-update');
+      expect(result).toEqual({
+        title: 'Latest AI Update',
+        source: 'example.com',
+        content: 'First paragraph with useful context.\n\nSecond paragraph with additional detail.',
+        url: 'https://example.com/news/ai-update',
+      });
+    });
+
+    it('removes noise nodes such as script/style/nav/aside/img from extracted text', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(`
+          <html>
+            <head>
+              <style>.hidden{display:none}</style>
+              <title>Noise Cleaning Test</title>
+            </head>
+            <body>
+              <nav>Top Navigation CTA</nav>
+              <article>
+                <h1>Noise Cleaning Test</h1>
+                <p>Main story starts here.</p>
+                <aside>Sidebar ad text</aside>
+                <img src="/hero.jpg" alt="hero">
+                <p>Important analysis continues here.</p>
+              </article>
+              <script>console.log('tracking')</script>
+            </body>
+          </html>
+        `),
+      });
+
+      const result = await service.extractArticleText('https://example.com/news/noise-cleaning');
+      expect(result.content).toContain('Main story starts here.');
+      expect(result.content).toContain('Important analysis continues here.');
+      expect(result.content).not.toContain('Top Navigation CTA');
+      expect(result.content).not.toContain('Sidebar ad text');
+      expect(result.content).not.toContain('tracking');
+      expect(result.content).not.toContain('hero');
+    });
+
+    it('throws extraction error for timeout/paywall-like failure', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(`
+          <html>
+            <head><title>Please subscribe</title></head>
+            <body>
+              <main>
+                <p>Sign in to continue reading.</p>
+                <p>Subscribe now to unlock this content.</p>
+              </main>
+            </body>
+          </html>
+        `),
+      });
+
+      await expect(
+        service.extractArticleText('https://example.com/paywall')
+      ).rejects.toMatchObject({ message: 'ARTICLE_EXTRACTION_FAILED' });
+    });
+
+    it('rejects localhost target for SSRF safety', async () => {
+      await expect(
+        service.extractArticleText('http://localhost:3000/private')
+      ).rejects.toMatchObject({ message: 'ARTICLE_URL_NOT_ALLOWED' });
+    });
+
+    it('rejects private IPv4 target for SSRF safety', async () => {
+      await expect(
+        service.extractArticleText('http://10.1.2.3/internal')
+      ).rejects.toMatchObject({ message: 'ARTICLE_URL_NOT_ALLOWED' });
+    });
+
+    it('rejects IPv6 loopback literal host for SSRF safety', async () => {
+      await expect(
+        service.extractArticleText('http://[::1]/private')
+      ).rejects.toMatchObject({ message: 'ARTICLE_URL_NOT_ALLOWED' });
+    });
+
+    it('rejects IPv6 link-local variants in fe80::/10 range', async () => {
+      await expect(
+        service.extractArticleText('http://[fe90::1]/private')
+      ).rejects.toMatchObject({ message: 'ARTICLE_URL_NOT_ALLOWED' });
+    });
+
+    it('rejects IPv4-mapped IPv6 loopback host for SSRF safety', async () => {
+      await expect(
+        service.extractArticleText('http://[::ffff:127.0.0.1]/private')
+      ).rejects.toMatchObject({ message: 'ARTICLE_URL_NOT_ALLOWED' });
+    });
+
+    it('rejects redirect responses to prevent redirect-based SSRF bypass', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: false,
+        status: 302,
+        headers: { get: vi.fn().mockReturnValue('http://localhost/internal') },
+      });
+
+      await expect(
+        service.extractArticleText('https://public.example/redirect')
+      ).rejects.toMatchObject({ message: 'ARTICLE_URL_NOT_ALLOWED' });
+    });
+
+    it('rejects hostnames that resolve to internal loopback IPs', async () => {
+      (dnsLookup as any).mockResolvedValueOnce([{ address: '127.0.0.1', family: 4 }]);
+
+      await expect(
+        service.extractArticleText('https://public.example/path')
+      ).rejects.toMatchObject({ message: 'ARTICLE_URL_NOT_ALLOWED' });
     });
   });
 });

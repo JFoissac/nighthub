@@ -1,4 +1,6 @@
 import Parser from 'rss-parser';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { prisma } from '../db/prisma.client';
 
 const rssParser = new Parser({
@@ -11,6 +13,16 @@ const FETCH_HEADERS = {
   'Accept': 'text/html,application/xhtml+xml,*/*',
   'Accept-Language': 'en-US,en;q=0.9',
 };
+
+export const ARTICLE_EXTRACTION_FAILED = 'ARTICLE_EXTRACTION_FAILED';
+export const ARTICLE_URL_NOT_ALLOWED = 'ARTICLE_URL_NOT_ALLOWED';
+
+export interface ExtractedArticleDto {
+  title: string;
+  source: string;
+  content: string;
+  url: string;
+}
 
 const DEFAULT_RSS_FEEDS = [
   { url: 'https://next.ink/feed/free', source: 'next.ink' },
@@ -277,7 +289,11 @@ export class NewsService {
       const [, path, slug] = linkMatch;
       if (slug === '' || seen.has(slug)) continue;
 
-      const surrounding = html.slice(linkMatch.index, linkMatch.index + 1500);
+      const anchorEnd = html.indexOf('</a>', linkMatch.index);
+      const surroundingEnd = anchorEnd === -1
+        ? linkMatch.index + 600
+        : anchorEnd + 4;
+      const surrounding = html.slice(linkMatch.index, surroundingEnd);
       const textContent = surrounding.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
       const dateMatch = textContent.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
@@ -447,6 +463,277 @@ private async cacheNews(items: any[]): Promise<void> {
     }
 
     return null;
+  }
+
+  async extractArticleText(url: string): Promise<ExtractedArticleDto> {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new Error(ARTICLE_URL_NOT_ALLOWED);
+    }
+
+    if (!(await this.isAllowedExtractionUrl(parsedUrl))) {
+      throw new Error(ARTICLE_URL_NOT_ALLOWED);
+    }
+
+    try {
+      const res = await fetch(parsedUrl.toString(), {
+        headers: FETCH_HEADERS,
+        signal: AbortSignal.timeout(8000),
+        redirect: 'follow',
+      });
+      if (res.status >= 400) {
+        throw new Error(`HTTP_${res.status}`);
+      }
+
+      const html = await res.text();
+      const title = this.extractArticleTitle(html);
+      const cleaned = this.removeNoiseNodes(html);
+      const container = this.pickReadableContainer(cleaned);
+      const content = this.normalizeContentBlocks(container);
+
+      if (!content || this.isLikelyPaywall(content)) {
+        throw new Error('UNREADABLE_CONTENT');
+      }
+
+      return {
+        title,
+        source: parsedUrl.hostname.replace(/^www\./, '').toLowerCase(),
+        content,
+        url: parsedUrl.toString(),
+      };
+    } catch (error) {
+      if ((error as Error)?.message === ARTICLE_URL_NOT_ALLOWED) {
+        throw error;
+      }
+      const code = (error as Error)?.name === 'AbortError'
+        ? 'TIMEOUT'
+        : (error as Error)?.message || 'UNKNOWN';
+      console.warn('[News] extractArticleText failed:', code, parsedUrl.toString());
+      throw new Error(ARTICLE_EXTRACTION_FAILED);
+    }
+  }
+
+  private async isAllowedExtractionUrl(url: URL): Promise<boolean> {
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    if (this.isHostnameBlocked(hostname)) {
+      return false;
+    }
+
+    const hostForIpChecks = this.normalizeHostForIpChecks(hostname);
+    const ipKind = isIP(hostForIpChecks);
+    if (ipKind > 0 && this.isPrivateOrInternalIp(hostForIpChecks)) {
+      return false;
+    }
+
+    if (ipKind > 0) return true;
+    const failClosedOnDnsError = this.isSuspiciousIpLikeHost(hostForIpChecks);
+
+    try {
+      const records = await lookup(hostname, { all: true, verbatim: true });
+      return records.every((record) => !this.isPrivateOrInternalIp(record.address));
+    } catch {
+      return !failClosedOnDnsError;
+    }
+  }
+
+  private isHostnameBlocked(hostname: string): boolean {
+    if (hostname === 'localhost') return true;
+    if (hostname.endsWith('.localhost')) return true;
+    if (hostname.endsWith('.local')) return true;
+    if (hostname.endsWith('.internal')) return true;
+    return false;
+  }
+
+  private isPrivateOrInternalIp(ip: string): boolean {
+    const kind = isIP(ip);
+    if (kind === 4) return this.isPrivateOrInternalIpv4(ip);
+    if (kind === 6) return this.isPrivateOrInternalIpv6(ip);
+    return false;
+  }
+
+  private isPrivateOrInternalIpv4(ip: string): boolean {
+    const octets = ip.split('.').map((part) => Number(part));
+    if (octets.length !== 4 || octets.some((n) => Number.isNaN(n))) return false;
+    const [a, b] = octets;
+
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 0) return true;
+    return false;
+  }
+
+  private isPrivateOrInternalIpv6(ip: string): boolean {
+    const normalized = this.normalizeHostForIpChecks(ip).toLowerCase();
+    const mappedIpv4 = this.extractMappedIpv4FromIpv6(normalized);
+    if (mappedIpv4) return this.isPrivateOrInternalIpv4(mappedIpv4);
+    if (normalized === '::1') return true;
+    if (normalized === '::') return true;
+    if (/^fe[89ab][0-9a-f]*:/.test(normalized)) return true; // link-local fe80::/10
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // unique-local
+    return false;
+  }
+
+  private normalizeHostForIpChecks(hostname: string): string {
+    const unbracketed = hostname.replace(/^\[/, '').replace(/\]$/, '');
+    const zoneIndex = unbracketed.indexOf('%');
+    if (zoneIndex >= 0) return unbracketed.slice(0, zoneIndex);
+    return unbracketed;
+  }
+
+  private isSuspiciousIpLikeHost(hostname: string): boolean {
+    if (hostname.includes(':')) return true;
+    if (/^[\d.]+$/.test(hostname)) return true;
+    return false;
+  }
+
+  private extractMappedIpv4FromIpv6(ipv6: string): string | null {
+    const dottedMatch = ipv6.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i);
+    if (dottedMatch) return dottedMatch[1];
+
+    const hexMatch = ipv6.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+    if (!hexMatch) return null;
+
+    const hi = parseInt(hexMatch[1], 16);
+    const lo = parseInt(hexMatch[2], 16);
+    if (Number.isNaN(hi) || Number.isNaN(lo)) return null;
+
+    const octets = [
+      (hi >> 8) & 0xff,
+      hi & 0xff,
+      (lo >> 8) & 0xff,
+      lo & 0xff,
+    ];
+    return octets.join('.');
+  }
+
+  private removeNoiseNodes(html: string): string {
+    let out = html;
+    const stripTagWithContent = [
+      'script', 'style', 'nav', 'aside', 'img', 'svg', 'canvas',
+      'video', 'audio', 'figure', 'picture', 'noscript', 'iframe',
+      'form', 'button',
+    ];
+    for (const tag of stripTagWithContent) {
+      const re = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, 'gi');
+      out = out.replace(re, ' ');
+      const selfClosingRe = new RegExp(`<${tag}\\b[^>]*\\/?>`, 'gi');
+      out = out.replace(selfClosingRe, ' ');
+    }
+
+    out = out.replace(
+      /<(div|section|span)[^>]*(class|id)=["'][^"']*(cookie|banner|subscribe|newsletter|promo|advert|social|share|related|recommend)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
+      ' '
+    );
+
+    return out;
+  }
+
+  private pickReadableContainer(html: string): string {
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const body = bodyMatch?.[1] || html;
+
+    const containerRegexes = [
+      /<article\b[^>]*>([\s\S]*?)<\/article>/gi,
+      /<main\b[^>]*>([\s\S]*?)<\/main>/gi,
+      /<(section|div)\b[^>]*(id|class)=["'][^"']*(content|article|post|entry|story|main|body)[^"']*["'][^>]*>([\s\S]*?)<\/\1>/gi,
+    ];
+
+    const candidates: string[] = [];
+    for (const re of containerRegexes) {
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(body)) !== null) {
+        const extracted = m[4] || m[1] || '';
+        if (extracted.trim()) candidates.push(extracted);
+      }
+    }
+    candidates.push(body);
+
+    let best = body;
+    let bestScore = 0;
+    for (const candidate of candidates) {
+      const plain = this.htmlToPlain(candidate);
+      const paragraphCount = (candidate.match(/<(p|h2|h3|li)\b/gi) || []).length;
+      const score = plain.length + paragraphCount * 180;
+      if (score > bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+
+    return best;
+  }
+
+  private normalizeContentBlocks(containerHtml: string): string {
+    const blockRegex = /<(p|h2|h3|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    const blocks: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = blockRegex.exec(containerHtml)) !== null) {
+      const txt = this.htmlToPlain(match[2]);
+      if (txt.length >= 20) blocks.push(txt);
+    }
+
+    if (blocks.length === 0) {
+      const fallback = this.htmlToPlain(containerHtml);
+      if (fallback.length < 40) return '';
+      return fallback;
+    }
+
+    return blocks.join('\n\n');
+  }
+
+  private htmlToPlain(html: string): string {
+    return html
+      .replace(/&#x([0-9a-fA-F]{1,6});/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d{1,7});/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private extractArticleTitle(html: string): string {
+    const titleFromHeading = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1];
+    const titleFromMeta = html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1]
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)?.[1];
+    const titleFromTag = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+
+    const selected = titleFromHeading || titleFromMeta || titleFromTag || 'Article';
+    return this.htmlToPlain(selected).substring(0, 255) || 'Article';
+  }
+
+  private isLikelyPaywall(content: string): boolean {
+    const lowered = content.toLowerCase();
+    const signals = [
+      'subscribe',
+      'sign in',
+      'sign-in',
+      'membership',
+      'unlock this content',
+      'continue reading',
+      'already a subscriber',
+      'start your trial',
+    ];
+    const hits = signals.filter(signal => lowered.includes(signal)).length;
+    return hits >= 2 || content.length < 40;
   }
 }
 

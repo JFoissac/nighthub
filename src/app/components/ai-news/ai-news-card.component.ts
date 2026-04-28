@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AiNewsItem } from '../../models';
 
@@ -8,8 +8,10 @@ import { AiNewsItem } from '../../models';
   imports: [CommonModule],
   template: `
     @if (item()) {
-      <a [href]="item()!.url" target="_blank"
-         class="block px-4 py-3 border-b border-[#1E1E2E]/50 last:border-0 hover:bg-white/[0.03] transition-colors group">
+      <div role="button" tabindex="0"
+         (click)="articleClick.emit($event)"
+         (keydown.enter)="articleClick.emit($event)"
+         class="block px-4 py-3 border-b border-[#1E1E2E]/50 last:border-0 hover:bg-white/[0.03] transition-colors group cursor-pointer">
         <h3 class="text-[13px] font-medium text-text-primary group-hover:text-primary transition-colors line-clamp-2 leading-snug">
           {{ item()!.title }}
         </h3>
@@ -29,12 +31,13 @@ import { AiNewsItem } from '../../models';
             </span>
           }
         </div>
-      </a>
+      </div>
     }
   `,
 })
 export class AiNewsCardComponent {
   item = input<AiNewsItem | null>(null);
+  articleClick = output<Event>();
 
   getSourceColor(): string {
     switch (this.item()?.source) {

@@ -61,6 +61,7 @@ export interface TwitchStream {
   thumbnailUrl: string;
   viewerCount: number;
   channelName: string;
+  channelHandle?: string;
   channelLogin?: string;
   channelAvatar: string;
   gameName: string;
@@ -82,6 +83,7 @@ export interface YoutubeVideo {
   title: string;
   thumbnailUrl: string;
   channelName: string;
+  channelHandle?: string;
   channelAvatar: string;
   duration: string;
   views: number;

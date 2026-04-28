@@ -11,6 +11,7 @@ vi.mock('../db/prisma.client', () => ({
       findMany: vi.fn().mockResolvedValue([]),
       upsert: vi.fn().mockResolvedValue({}),
       update: vi.fn().mockResolvedValue({}),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   },
 }));
@@ -87,6 +88,8 @@ describe('YoutubeService', () => {
     it('updates existing preference', async () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue({ id: '1' });
+      vi.spyOn(service, 'resolveChannelId').mockResolvedValue('UCbbbbbbbbbbbbbbbbbbbbbb');
+      vi.spyOn(service, 'fetchAndCacheLatestVideos').mockResolvedValue();
       await service.saveChannelHandles(['@foo', '@bar']);
       expect(prisma.userPreference.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { youtubeChannels: '@foo,@bar' } })
@@ -96,6 +99,8 @@ describe('YoutubeService', () => {
     it('creates preference if none exists', async () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue(null);
+      vi.spyOn(service, 'resolveChannelId').mockResolvedValue('UCbbbbbbbbbbbbbbbbbbbbbb');
+      vi.spyOn(service, 'fetchAndCacheLatestVideos').mockResolvedValue();
       await service.saveChannelHandles(['@foo']);
       expect(prisma.userPreference.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: { youtubeChannels: '@foo' } })
@@ -104,22 +109,41 @@ describe('YoutubeService', () => {
   });
 
   describe('resolveChannelId', () => {
-    it('extracts channelId from JSON in HTML', async () => {
-      (global.fetch as any).mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve('some html "channelId":"UC1234567890123456789012" more html'),
-      });
-      const id = await service.resolveChannelId('testchannel');
-      expect(id).toBe('UC1234567890123456789012');
+    it('returns input as-is when channel ID is already provided', async () => {
+      expect(await service.resolveChannelId('UC1234567890123456789012')).toBe('UC1234567890123456789012');
     });
 
-    it('falls back to canonical link regex', async () => {
+    it('extracts channelId from strict canonical+browseId HTML match', async () => {
       (global.fetch as any).mockResolvedValue({
         ok: true,
-        text: () => Promise.resolve('<link rel="canonical" href="https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa">'),
+        text: () => Promise.resolve(
+          `some html "canonicalBaseUrl":"/@SylvainLyve" ... window['ytCommand'] = {"browseEndpoint":{"browseId":"UCB9gfNOymNLIm5J8lf4MhtA"}}; more html`
+        ),
       });
-      const id = await service.resolveChannelId('testchannel');
-      expect(id).toBe('UCaaaaaaaaaaaaaaaaaaaaaa');
+      const id = await service.resolveChannelId('@SylvainLyve');
+      expect(id).toBe('UCB9gfNOymNLIm5J8lf4MhtA');
+    });
+
+    it('does not use unrelated first channelId fallback (historical inversion case)', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(
+          `prefix "channelId":"UCd26XTdCltsEpyvZmmGW9Aw" "canonicalBaseUrl":"/@SylvainLyve" middle "externalId":"UCB9gfNOymNLIm5J8lf4MhtA" suffix`
+        ),
+      });
+      const id = await service.resolveChannelId('@SylvainLyve');
+      expect(id).toBe('UCB9gfNOymNLIm5J8lf4MhtA');
+    });
+
+    it('returns null when canonical handle does not match requested handle', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(
+          `"canonicalBaseUrl":"/@SomeoneElse" "externalId":"UCB9gfNOymNLIm5J8lf4MhtA"`
+        ),
+      });
+      const id = await service.resolveChannelId('@SylvainLyve');
+      expect(id).toBeNull();
     });
 
     it('returns null when fetch fails', async () => {
@@ -167,21 +191,16 @@ describe('YoutubeService', () => {
   });
 
   describe('getCachedVideos', () => {
-    it('queries videos by channelId and channelHandle within 3 days', async () => {
+    it('queries videos by channelId within 7 days', async () => {
       const { prisma } = await import('../db/prisma.client');
-      (prisma.userPreference.findFirst as any)
-        .mockResolvedValueOnce({ youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb' })
-        .mockResolvedValueOnce({ youtubeChannels: '@foo' });
+      (prisma.userPreference.findFirst as any).mockResolvedValueOnce({ youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb' });
 
       await service.getCachedVideos();
       expect(prisma.youtubeVideo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             publishedAt: expect.objectContaining({ gte: expect.any(Date) }),
-            OR: expect.arrayContaining([
-              expect.objectContaining({ channelId: { in: ['UCbbbbbbbbbbbbbbbbbbbbbb'] } }),
-              expect.objectContaining({ channelHandle: { in: ['@foo'] } }),
-            ]),
+            channelId: { in: ['UCbbbbbbbbbbbbbbbbbbbbbb'] },
           }),
           take: 20,
           orderBy: { publishedAt: 'desc' },
@@ -211,7 +230,7 @@ describe('YoutubeService', () => {
 
       expect(service.fetchAndCacheLatestVideos).toHaveBeenCalledTimes(1);
       expect(service.verifyAndCleanLiveStreams).toHaveBeenCalledTimes(1);
-      expect(lives).toEqual([{ youtubeId: 'live1' }]);
+      expect(lives).toEqual([{ youtubeId: 'live1', channelHandle: '' }]);
       expect(prisma.youtubeVideo.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ isLive: true }),
@@ -242,6 +261,7 @@ describe('YoutubeService', () => {
   describe('getLatestVideos', () => {
     it('returns cached videos without blocking on empty cache', async () => {
       const { prisma } = await import('../db/prisma.client');
+      vi.spyOn(service, 'fetchAndCacheLatestVideos').mockResolvedValue();
       (prisma.youtubeVideo.findMany as any).mockResolvedValue([]);
       (prisma.userPreference.findFirst as any).mockResolvedValue({});
       const videos = await service.getLatestVideos();
@@ -251,12 +271,14 @@ describe('YoutubeService', () => {
 
     it('returns cached videos directly when available', async () => {
       const { prisma } = await import('../db/prisma.client');
+      vi.spyOn(service, 'fetchAndCacheLatestVideos').mockResolvedValue();
       const fake = [{ youtubeId: 'v1', title: 'Cached' }];
+      (prisma.youtubeVideo.findMany as any).mockReset();
       (prisma.youtubeVideo.findMany as any).mockResolvedValue(fake);
       (prisma.userPreference.findFirst as any)
         .mockResolvedValueOnce({ youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb' })
         .mockResolvedValueOnce({ youtubeChannels: '@foo' });
-      expect(await service.getLatestVideos()).toEqual(fake);
+      expect(await service.getLatestVideos()).toEqual([{ ...fake[0], channelHandle: '' }]);
     });
   });
 
@@ -269,6 +291,116 @@ describe('YoutubeService', () => {
       await service.fetchAndCacheLatestVideos();
 
       expect(prisma.youtubeVideo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('reconciles channelIds from handles and purges orphan videos before cache refresh', async () => {
+      const { prisma } = await import('../db/prisma.client');
+      (prisma.userPreference.findFirst as any).mockResolvedValue({ id: '1', youtubeChannels: '@foo' });
+      (prisma.youtubeVideo.findMany as any).mockResolvedValue([]);
+      vi.spyOn(service, 'getChannelHandles').mockResolvedValue(['@foo']);
+      vi.spyOn(service, 'resolveChannelId').mockResolvedValue('UCbbbbbbbbbbbbbbbbbbbbbb');
+
+      await service.fetchAndCacheLatestVideos();
+
+      expect(prisma.userPreference.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb' }),
+        })
+      );
+      expect(prisma.youtubeVideo.deleteMany).toHaveBeenCalledWith({
+        where: { channelId: { notIn: ['UCbbbbbbbbbbbbbbbbbbbbbb'] } },
+      });
+    });
+
+    it('keeps stored channel IDs when handle resolution temporarily fails', async () => {
+      const { prisma } = await import('../db/prisma.client');
+      const storedId = 'UCaaaaaaaaaaaaaaaaaaaaaa';
+      vi.spyOn(service, 'getChannelHandles').mockResolvedValue(['@foo']);
+      vi.spyOn(service, 'getChannelIds').mockResolvedValue([storedId]);
+      vi.spyOn(service, 'resolveChannelId').mockResolvedValue(null);
+
+      await service.fetchAndCacheLatestVideos();
+
+      expect(prisma.userPreference.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ youtubeChannelIds: storedId }),
+        })
+      );
+      expect(prisma.youtubeVideo.deleteMany).toHaveBeenCalledWith({
+        where: { channelId: { notIn: [storedId] } },
+      });
+    });
+  });
+
+  describe('remap diagnostics', () => {
+    it('flags unresolved handles and orphan stored IDs', async () => {
+      const { prisma } = await import('../db/prisma.client');
+      vi.spyOn(service, 'getChannelHandles').mockResolvedValue(['@good', '@bad']);
+      vi.spyOn(service, 'getChannelIds').mockResolvedValue([
+        'UCgoodgoodgoodgoodgoodgo',
+        'UCorphanorphanorphanorph',
+      ]);
+      vi.spyOn(service, 'resolveChannelId')
+        .mockImplementation(async (handle: string) => (
+          handle === '@good' ? 'UCgoodgoodgoodgoodgoodgo' : null
+        ));
+      (prisma.youtubeVideo.findMany as any).mockResolvedValue([
+        {
+          channelId: 'UCgoodgoodgoodgoodgoodgo',
+          channelName: 'Good Channel',
+          channelHandle: '@good',
+        },
+        {
+          channelId: 'UCorphanorphanorphanorph',
+          channelName: 'Wrong Channel',
+          channelHandle: '@wrong',
+        },
+      ]);
+
+      const report = await service.getRemapReport();
+
+      expect(report.handles).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            handle: '@good',
+            status: 'ok',
+            resolvedChannelId: 'UCgoodgoodgoodgoodgoodgo',
+          }),
+          expect.objectContaining({
+            handle: '@bad',
+            status: 'unresolved',
+            resolvedChannelId: null,
+          }),
+        ])
+      );
+      expect(report.orphanChannelIds).toEqual([
+        expect.objectContaining({ channelId: 'UCorphanorphanorphanorph' }),
+      ]);
+    });
+  });
+
+  describe('manual remap', () => {
+    it('applies explicit handle -> channel ID override and saves reconciled IDs', async () => {
+      const { prisma } = await import('../db/prisma.client');
+      vi.spyOn(service, 'getChannelHandles').mockResolvedValue(['@good', '@target']);
+      vi.spyOn(service, 'resolveChannelId')
+        .mockImplementation(async (handle: string) => (
+          handle === '@good' ? 'UCgoodgoodgoodgoodgoodgo' : null
+        ));
+      const saveChannelIdsSpy = vi.spyOn(service, 'saveChannelIds').mockResolvedValue();
+      vi.spyOn(service, 'fetchAndCacheLatestVideos').mockResolvedValue();
+      (prisma.userPreference.findFirst as any).mockResolvedValue({ id: 'pref-1' });
+
+      const result = await service.remapHandleToChannelId('@target', 'UCtargettargettargettarg');
+
+      expect(result).toEqual({ handle: '@target', channelId: 'UCtargettargettargettarg' });
+      expect(saveChannelIdsSpy).toHaveBeenCalledWith([
+        'UCgoodgoodgoodgoodgoodgo',
+        'UCtargettargettargettarg',
+      ]);
+      expect(prisma.youtubeVideo.deleteMany).toHaveBeenCalledWith({
+        where: { channelId: { notIn: ['UCgoodgoodgoodgoodgoodgo', 'UCtargettargettargettarg'] } },
+      });
     });
   });
 

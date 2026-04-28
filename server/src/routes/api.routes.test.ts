@@ -30,11 +30,14 @@ vi.mock('../services/weather.service', () => ({
 }));
 
 vi.mock('../services/news.service', () => ({
+  ARTICLE_EXTRACTION_FAILED: 'ARTICLE_EXTRACTION_FAILED',
+  ARTICLE_URL_NOT_ALLOWED: 'ARTICLE_URL_NOT_ALLOWED',
   newsService: {
     fetchAiNews: vi.fn(),
     getCachedNews: vi.fn(),
     detectFeed: vi.fn(),
     validateFeedUrl: vi.fn(),
+    extractArticleText: vi.fn(),
   },
 }));
 
@@ -52,6 +55,18 @@ vi.mock('../services/youtube.service', () => ({
     getChannelIds: vi.fn().mockResolvedValue([]),
     saveChannelHandles: vi.fn(),
     saveChannelIds: vi.fn(),
+    getRemapReport: vi.fn().mockResolvedValue({
+      generatedAt: new Date().toISOString(),
+      handles: [],
+      orphanChannelIds: [],
+      storedChannelIds: [],
+      resolvedChannelIds: [],
+    }),
+    searchChannelsByName: vi.fn().mockResolvedValue([]),
+    remapHandleToChannelId: vi.fn().mockResolvedValue({
+      handle: '@demo',
+      channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb',
+    }),
   },
 }));
 
@@ -313,6 +328,63 @@ describe('API Routes', () => {
     });
   });
 
+  describe('GET /youtube/remap/report', () => {
+    it('returns remap diagnostic report', async () => {
+      const handler = getHandler('/youtube/remap/report', 'get');
+      const res = mockRes();
+      const req = {} as any;
+      const report = {
+        generatedAt: new Date().toISOString(),
+        handles: [{ handle: '@foo', resolvedChannelId: null, status: 'unresolved' }],
+        orphanChannelIds: [],
+        storedChannelIds: [],
+        resolvedChannelIds: [],
+      };
+      (youtubeService.getRemapReport as any).mockResolvedValue(report);
+
+      await handler(req, res);
+      expect(youtubeService.getRemapReport).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(report);
+    });
+  });
+
+  describe('GET /youtube/remap/search', () => {
+    it('searches channel candidates from query', async () => {
+      const handler = getHandler('/youtube/remap/search', 'get');
+      const res = mockRes();
+      const req = { query: { q: 'sylvain' } } as any;
+      (youtubeService.searchChannelsByName as any).mockResolvedValue([
+        { channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb', title: 'Sylvain', handle: '@Sylvain', url: 'https://youtube.com/@Sylvain', source: 'youtube-api' },
+      ]);
+
+      await handler(req, res);
+      expect(youtubeService.searchChannelsByName).toHaveBeenCalledWith('sylvain');
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ query: 'sylvain' }));
+    });
+
+    it('returns 400 for too-short query', async () => {
+      const handler = getHandler('/youtube/remap/search', 'get');
+      const res = mockRes();
+      const req = { query: { q: 'a' } } as any;
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(youtubeService.searchChannelsByName).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /youtube/remap', () => {
+    it('remaps handle to provided channel ID', async () => {
+      const handler = getHandler('/youtube/remap', 'post');
+      const res = mockRes();
+      const req = { body: { handle: '@foo', channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb' } } as any;
+
+      await handler(req, res);
+      expect(youtubeService.remapHandleToChannelId).toHaveBeenCalledWith('@foo', 'UCbbbbbbbbbbbbbbbbbbbbbb');
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    });
+  });
+
   describe('GET /dashboard', () => {
     it('returns dashboard data', async () => {
       const handler = getHandler('/dashboard', 'get');
@@ -338,6 +410,30 @@ describe('API Routes', () => {
   });
 
   describe('GET /dashboard/stream', () => {
+    it('emits heartbeat events while dashboard payload is pending', async () => {
+      vi.useFakeTimers();
+      try {
+        const handler = getHandler('/dashboard/stream', 'get');
+        const res = mockRes();
+        const req = {} as any;
+
+        (aggregatorService.getDashboardData as any).mockImplementation(
+          () => new Promise((resolve) => setTimeout(() => resolve({ weather: null }), 4500))
+        );
+
+        const pending = handler(req, res);
+        await vi.advanceTimersByTimeAsync(4100);
+
+        expect(res.write).toHaveBeenCalledWith('event: heartbeat\n');
+        expect(res.write).toHaveBeenCalledWith(expect.stringContaining('"ts"'));
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await pending;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('streams progress events and final dashboard', async () => {
       const handler = getHandler('/dashboard/stream', 'get');
       const res = mockRes();
@@ -440,6 +536,93 @@ describe('API Routes', () => {
 
       await handler(req, res);
       expect(res.json).toHaveBeenCalledWith({ feedUrl: 'https://example.com/feed.xml' });
+    });
+  });
+
+  describe('POST /news/extract', () => {
+    it('returns extracted article payload with title/source/content/url', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'https://example.com/news/ai' } } as any;
+      const payload = {
+        title: 'AI Article',
+        source: 'example.com',
+        content: 'Paragraph 1.\n\nParagraph 2.',
+        url: 'https://example.com/news/ai',
+      };
+      (newsService.extractArticleText as any).mockResolvedValue(payload);
+
+      await handler(req, res);
+      expect(newsService.extractArticleText).toHaveBeenCalledWith('https://example.com/news/ai');
+      expect(res.json).toHaveBeenCalledWith(payload);
+    });
+
+    it('returns dedicated extraction failure payload for frontend fallback path', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'https://example.com/paywall' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('ARTICLE_EXTRACTION_FAILED'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'ARTICLE_EXTRACTION_FAILED',
+        fallback: true,
+        url: 'https://example.com/paywall',
+      });
+    });
+
+    it('returns 400 for invalid protocol payload', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'ftp://example.com/news/ai' } } as any;
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(newsService.extractArticleText).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for invalid body payload', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: {} } as any;
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(newsService.extractArticleText).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 for non-extraction service errors', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'https://example.com/news/ai' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('UNEXPECTED_FAILURE'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Failed to extract article text' });
+    });
+
+    it('returns 400 for unallowed internal targets', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'http://localhost:3000/private' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('ARTICLE_URL_NOT_ALLOWED'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'URL_NOT_ALLOWED' });
+    });
+
+    it('returns 400 for blocked IPv6 internal targets', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'http://[::1]/private' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('ARTICLE_URL_NOT_ALLOWED'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'URL_NOT_ALLOWED' });
     });
   });
 

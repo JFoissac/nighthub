@@ -3,6 +3,7 @@ import { prisma } from '../db/prisma.client';
 const TWITCH_GQL = 'https://gql.twitch.tv/gql';
 // Twitch's own web client-id (public, used by twitch.tv website)
 const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+const TWITCH_GQL_TIMEOUT_MS = 10_000;
 
 const GQL_HEADERS = {
   'Client-Id': TWITCH_WEB_CLIENT_ID,
@@ -11,16 +12,53 @@ const GQL_HEADERS = {
 };
 
 async function gql(query: string, variables: Record<string, any> = {}): Promise<any> {
-  const res = await fetch(TWITCH_GQL, {
-    method: 'POST',
-    headers: GQL_HEADERS,
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!res.ok) throw new Error(`GQL HTTP ${res.status}`);
-  return res.json();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TWITCH_GQL_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(TWITCH_GQL, {
+      method: 'POST',
+      headers: GQL_HEADERS,
+      body: JSON.stringify({ query, variables }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`GQL HTTP ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export class TwitchService {
+  private lastLightRefreshAt = 0;
+  private lightRefreshInFlight: Promise<void> | null = null;
+  private authoritativeRefreshInFlight: Promise<{ changed: boolean; newLives: number; endedLives: number; totalLive: number }> | null = null;
+  private static readonly LIGHT_REFRESH_TTL_MS = 5 * 60 * 1000;
+  private static readonly LIVE_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+
+  private extractChannelLoginFromUrl(url: string): string {
+    const match = url.match(/twitch\.tv\/([^/?#]+)/i);
+    return (match?.[1] || '').toLowerCase();
+  }
+
+  private async fetchUsersByLogins(logins: string[]): Promise<any[]> {
+    const data = await gql(`
+      query GetStreams($logins: [String!]!) {
+        users(logins: $logins) {
+          id login displayName
+          profileImageURL(width: 70)
+          stream {
+            id title viewersCount
+            previewImageURL(width: 320, height: 180)
+            game { name }
+            createdAt
+          }
+        }
+      }
+    `, { logins });
+    return data?.data?.users || [];
+  }
+
   /** Get followed channels config from DB preferences */
   async getFollowedChannels(): Promise<string[]> {
     try {
@@ -136,28 +174,11 @@ export class TwitchService {
     const channels = await this.getFollowedChannels();
 
     if (channels.length === 0) {
-      return this.getCachedStreams();
+      return [];
     }
 
     try {
-      // Batch query: get all channels in one GQL call
-      const logins = JSON.stringify(channels);
-      const data = await gql(`
-        query GetStreams($logins: [String!]!) {
-          users(logins: $logins) {
-            id login displayName
-            profileImageURL(width: 70)
-            stream {
-              id title viewersCount
-              previewImageURL(width: 320, height: 180)
-              game { name }
-              createdAt
-            }
-          }
-        }
-      `, { logins: channels });
-
-      const users: any[] = data?.data?.users || [];
+      const users = await this.fetchUsersByLogins(channels);
       console.log(`[Twitch] GQL response: ${users.length} users total`);
       const liveUsers = users.filter(u => u.stream !== null);
       console.log(`[Twitch] Live: ${liveUsers.length}/${users.length}`);
@@ -180,21 +201,6 @@ export class TwitchService {
           createdAt: u.stream.createdAt,
         }));
 
-      // Also return offline channels with isLive: false for the follows list
-      const allChannels = users.map(u => ({
-        twitchId: u.id,
-        title: u.stream?.title || '',
-        thumbnailUrl: u.stream?.previewImageURL ||
-          `https://static-cdn.jtvnw.net/previews-ttv/live_user_${u.login}-320x180.jpg`,
-        viewerCount: u.stream?.viewersCount || 0,
-        channelName: u.displayName,
-        channelLogin: u.login,
-        channelAvatar: u.profileImageURL,
-        gameName: u.stream?.game?.name || '',
-        isLive: !!u.stream,
-        url: `https://twitch.tv/${u.login}`,
-      }));
-
       // Cache live streams
       if (liveStreams.length > 0) {
         await this.cacheStreams(liveStreams);
@@ -205,6 +211,110 @@ export class TwitchService {
       console.error('getFollowedStreams GQL error:', e);
       return this.getCachedStreams();
     }
+  }
+
+  /**
+   * Authoritative refresh:
+   * - queries followed users once
+   * - reconciles cached live rows against current live response
+   * - marks ended/rotated rows offline and refreshes current live rows
+   */
+  async refreshLiveCacheLight(): Promise<{ changed: boolean; newLives: number; endedLives: number; totalLive: number }> {
+    if (this.authoritativeRefreshInFlight) {
+      return this.authoritativeRefreshInFlight;
+    }
+
+    this.authoritativeRefreshInFlight = (async () => {
+      const channels = await this.getFollowedChannels();
+      if (channels.length === 0) {
+        return { changed: false, newLives: 0, endedLives: 0, totalLive: 0 };
+      }
+
+      const users = await this.fetchUsersByLogins(channels);
+      const liveUsers = users.filter((u: any) => u.stream !== null);
+      const liveStreams = liveUsers.map((u: any) => ({
+        twitchId: u.stream.id,
+        title: u.stream.title,
+        thumbnailUrl: u.stream.previewImageURL ||
+          `https://static-cdn.jtvnw.net/previews-ttv/live_user_${u.login}-320x180.jpg`,
+        viewerCount: u.stream.viewersCount,
+        channelName: u.displayName,
+        channelLogin: u.login,
+        channelAvatar: u.profileImageURL,
+        gameName: u.stream.game?.name || 'Unknown',
+        isLive: true,
+        url: `https://twitch.tv/${u.login}`,
+        createdAt: u.stream.createdAt,
+      }));
+
+      const liveLogins = new Set(
+        liveStreams
+          .map((s: any) => (s.channelLogin || '').toLowerCase())
+          .filter(Boolean)
+      );
+      const liveStreamIdsByLogin = new Map<string, Set<string>>();
+      for (const s of liveStreams) {
+        const login = (s.channelLogin || '').toLowerCase();
+        if (!login) continue;
+        const set = liveStreamIdsByLogin.get(login) || new Set<string>();
+        set.add(s.twitchId);
+        liveStreamIdsByLogin.set(login, set);
+      }
+
+      const cachedLive = await prisma.twitchStream.findMany({
+        where: { isLive: true },
+        select: { id: true, url: true, twitchId: true },
+      });
+      const cachedLogins = new Set(
+        cachedLive
+          .map((s) => this.extractChannelLoginFromUrl(s.url))
+          .filter(Boolean)
+      );
+
+      const newLives = [...liveLogins].filter((login) => !cachedLogins.has(login)).length;
+
+      // End rows where channel is offline now OR channel is still live with a different stream id.
+      const endedIds = cachedLive
+        .filter((s) => {
+          const login = this.extractChannelLoginFromUrl(s.url);
+          if (!login) return false;
+          if (!liveLogins.has(login)) return true;
+
+          const currentStreamIds = liveStreamIdsByLogin.get(login);
+          if (!currentStreamIds || !s.twitchId) return false;
+          return !currentStreamIds.has(s.twitchId);
+        })
+        .map((s) => s.id);
+      const endedLives = endedIds.length;
+      const changed = newLives > 0 || endedLives > 0;
+
+      if (endedIds.length > 0) {
+        await prisma.twitchStream.updateMany({
+          where: { id: { in: endedIds } },
+          data: { isLive: false },
+        });
+      }
+
+      if (liveStreams.length > 0) {
+        await this.cacheStreams(liveStreams);
+      }
+
+      if (!changed) {
+        return { changed: false, newLives: 0, endedLives: 0, totalLive: liveStreams.length };
+      }
+
+      return { changed: true, newLives, endedLives, totalLive: liveStreams.length };
+    })()
+      .catch((e) => {
+        // Keep callers resilient even if refresh fails.
+        console.error('[Twitch] refreshLiveCacheLight error:', e);
+        return { changed: false, newLives: 0, endedLives: 0, totalLive: 0 };
+      })
+      .finally(() => {
+        this.authoritativeRefreshInFlight = null;
+      });
+
+    return this.authoritativeRefreshInFlight;
   }
 
   /** Get all channels (live + offline) from config */
@@ -257,6 +367,7 @@ export class TwitchService {
             gameName: s.gameName,
             isLive: s.isLive,
             url: s.url,
+            fetchedAt: new Date(),
           },
           create: {
             twitchId: s.twitchId,
@@ -268,6 +379,7 @@ export class TwitchService {
             gameName: s.gameName,
             isLive: s.isLive,
             url: s.url,
+            fetchedAt: new Date(),
           },
         });
       }
@@ -276,16 +388,51 @@ export class TwitchService {
     }
   }
 
-  private async getCachedStreams(): Promise<any[]> {
+  private async getCachedStreams(limit: number = 20): Promise<any[]> {
     try {
+      const freshAfter = new Date(Date.now() - TwitchService.LIVE_CACHE_MAX_AGE_MS);
       return await prisma.twitchStream.findMany({
-        where: { isLive: true },
-        take: 20,
+        where: {
+          isLive: true,
+          fetchedAt: { gte: freshAfter },
+        },
+        take: limit,
         orderBy: { fetchedAt: 'desc' },
       });
     } catch {
       return [];
     }
+  }
+
+  private triggerLightRefreshIfStale(): void {
+    const now = Date.now();
+    if (this.lightRefreshInFlight) return;
+    if (now - this.lastLightRefreshAt < TwitchService.LIGHT_REFRESH_TTL_MS) return;
+
+    this.lightRefreshInFlight = this.refreshLiveCacheLight()
+      .then(() => {
+        this.lastLightRefreshAt = Date.now();
+      })
+      .catch((e) => {
+        // Do not move lastLightRefreshAt on failure, so retries can happen sooner.
+        console.error('[Twitch] light background refresh failed:', e);
+      })
+      .finally(() => {
+        this.lightRefreshInFlight = null;
+      });
+  }
+
+  /**
+   * Dashboard-safe method:
+   * returns cached streams immediately and refreshes in background if stale.
+   */
+  async getLiveStreamsFast(limit: number = 20): Promise<any[]> {
+    const followed = await this.getFollowedChannels();
+    if (followed.length === 0) return [];
+
+    const cached = await this.getCachedStreams(limit);
+    this.triggerLightRefreshIfStale();
+    return cached;
   }
 
   /** Legacy OAuth methods - now no-ops since we use GQL */
