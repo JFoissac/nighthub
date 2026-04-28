@@ -73,6 +73,7 @@ export interface ExtractedNewsArticle {
   title: string;
   source: string;
   content: string;
+  contentHtml?: string;
   url: string;
 }
 

@@ -21,6 +21,7 @@ export interface ExtractedArticleDto {
   title: string;
   source: string;
   content: string;
+  contentHtml?: string;
   url: string;
 }
 
@@ -491,16 +492,17 @@ private async cacheNews(items: any[]): Promise<void> {
       const title = this.extractArticleTitle(html);
       const cleaned = this.removeNoiseNodes(html);
       const container = this.pickReadableContainer(cleaned);
-      const content = this.normalizeContentBlocks(container);
+      const { text, html: contentHtml } = this.normalizeContentBlocks(container);
 
-      if (!content || this.isLikelyPaywall(content)) {
+      if (!text || this.isLikelyPaywall(text)) {
         throw new Error('UNREADABLE_CONTENT');
       }
 
       return {
         title,
         source: parsedUrl.hostname.replace(/^www\./, '').toLowerCase(),
-        content,
+        content: text,
+        contentHtml,
         url: parsedUrl.toString(),
       };
     } catch (error) {
@@ -620,7 +622,8 @@ private async cacheNews(items: any[]): Promise<void> {
     const stripTagWithContent = [
       'script', 'style', 'nav', 'aside', 'img', 'svg', 'canvas',
       'video', 'audio', 'figure', 'picture', 'noscript', 'iframe',
-      'form', 'button',
+      'form', 'button', 'ul', 'ol', 'dl', 'table', 'thead', 'tbody',
+      'tfoot', 'tr', 'blockquote', 'pre', 'code',
     ];
     for (const tag of stripTagWithContent) {
       const re = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?<\\/${tag}>`, 'gi');
@@ -630,7 +633,7 @@ private async cacheNews(items: any[]): Promise<void> {
     }
 
     out = out.replace(
-      /<(div|section|span)[^>]*(class|id)=["'][^"']*(cookie|banner|subscribe|newsletter|promo|advert|social|share|related|recommend)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
+      /<(div|section|span)[^>]*(class|id)=["'][^"']*(cookie|banner|subscribe|newsletter|promo|advert|social|share|related|recommend|tags|categories|sidebar|footer|header|nav|menu|breadcrumb|author|date|time)[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
       ' '
     );
 
@@ -672,22 +675,106 @@ private async cacheNews(items: any[]): Promise<void> {
     return best;
   }
 
-  private normalizeContentBlocks(containerHtml: string): string {
-    const blockRegex = /<(p|h2|h3|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
-    const blocks: string[] = [];
+  private normalizeContentBlocks(containerHtml: string): { text: string; html: string } {
+    const blocks: { tag: string; text: string; html: string }[] = [];
+    const blockRegex = /<(p|h2|h3|h4|h5|h6|li)\b[^>]*>([\s\S]*?)<\/\1>/gi;
     let match: RegExpExecArray | null;
     while ((match = blockRegex.exec(containerHtml)) !== null) {
-      const txt = this.htmlToPlain(match[2]);
-      if (txt.length >= 20) blocks.push(txt);
+      const tag = match[1].toLowerCase();
+      const rawContent = match[2];
+      const innerBlocks = this.hasBlockLevelElements(rawContent);
+      if (innerBlocks) continue;
+      const txt = this.htmlToPlain(rawContent);
+      if (txt.length >= 20) {
+        const htmlBlock = this.sanitizeBlock(rawContent);
+        blocks.push({ tag, text: txt, html: htmlBlock });
+      }
     }
 
     if (blocks.length === 0) {
-      const fallback = this.htmlToPlain(containerHtml);
-      if (fallback.length < 40) return '';
-      return fallback;
+      const cleanContainer = this.removeAllTags(containerHtml);
+      const fallback = this.htmlToPlain(cleanContainer);
+      if (fallback.length < 40) return { text: '', html: '' };
+      return { text: fallback, html: `<p>${fallback}</p>` };
     }
 
-    return blocks.join('\n\n');
+    const text = blocks.map(b => b.text).join('\n\n');
+    const html = blocks.map(b => {
+      if (b.tag === 'li') return `<li>${b.html}</li>`;
+      if (['h2', 'h3', 'h4', 'h5', 'h6'].includes(b.tag)) return `<${b.tag}>${b.html}</${b.tag}>`;
+      return `<p>${b.html}</p>`;
+    }).join('\n');
+
+    return { text, html };
+  }
+
+  private hasBlockLevelElements(html: string): boolean {
+    return /<(p|h2|h3|h4|h5|h6|ul|ol|dl|table|blockquote|pre|div|section|article|header|footer|nav|aside)\b[^>]*>[\s\S]*?<\/\1>/gi.test(html);
+  }
+
+  private removeAllTags(html: string): string {
+    return html
+      .replace(/&#x([0-9a-fA-F]{1,6});/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d{1,7});/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
+      .replace(/&ldquo;|&rdquo;/gi, '"')
+      .replace(/&hellip;/gi, '…')
+      .replace(/&mdash;/gi, '—')
+      .replace(/&ndash;/gi, '–')
+      .replace(/&copy;/gi, '©')
+      .replace(/&reg;/gi, '®')
+      .replace(/&trade;/gi, '™')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private sanitizeBlock(html: string): string {
+    return html
+      .replace(/&#x([0-9a-fA-F]{1,6});/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d{1,7});/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
+      .replace(/&ldquo;|&rdquo;/gi, '"')
+      .replace(/&hellip;/gi, '…')
+      .replace(/&mdash;/gi, '—')
+      .replace(/&ndash;/gi, '–')
+      .replace(/&copy;/gi, '©')
+      .replace(/&reg;/gi, '®')
+      .replace(/&trade;/gi, '™')
+      .replace(/<br\s*\/?>/gi, '<br>')
+      .replace(/<a\b([^>]*)\>/gi, (_, attrs) => {
+        const href = attrs.match(/href=["']([^"']+)["']/)?.[1] || '#';
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer">`;
+      })
+      .replace(/<\/?(span|div|i|b|strong|em|u|strike|del|sup|sub)\b[^>]*>/gi, (m) => {
+        const tag = m.match(/^<\/(\w+)/)?.[1];
+        if (tag) return `</span>`;
+        const opening = m.match(/^<(\w+)/)?.[1] || '';
+        const attrs = m.match(/^<\w+\s+([^>]*)>/)?.[1] || '';
+        return `<span${attrs ? ' ' + attrs : ''}>`;
+      })
+      .replace(/<(\w+)\b[^>]*>/g, '<span>')
+      .replace(/<\/(\w+)[^>]*>/g, '</span>')
+      .replace(/<span>\s*<\/span>/g, '')
+      .replace(/<span>([^<]+)<\/span>/g, '$1')
+      .replace(/<span><span>/g, '<span>')
+      .replace(/<\/span><\/span>/g, '</span>')
+      .replace(/<br>/g, '<br>')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private htmlToPlain(html: string): string {
@@ -700,7 +787,14 @@ private async cacheNews(items: any[]): Promise<void> {
       .replace(/&nbsp;/gi, ' ')
       .replace(/&amp;/gi, '&')
       .replace(/&quot;/gi, '"')
-      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
+      .replace(/&ldquo;|&rdquo;/gi, '"')
+      .replace(/&hellip;/gi, '…')
+      .replace(/&mdash;/gi, '—')
+      .replace(/&ndash;/gi, '–')
+      .replace(/&copy;/gi, '©')
+      .replace(/&reg;/gi, '®')
+      .replace(/&trade;/gi, '™')
       .replace(/&lt;/gi, '<')
       .replace(/&gt;/gi, '>')
       .replace(/\s+\n/g, '\n')

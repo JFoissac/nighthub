@@ -43,9 +43,13 @@ import { ExtractedNewsArticle } from '../../services/api.service';
             </button>
           </div>
         </div>
-      <div class="overflow-y-auto p-6 overscroll-contain">
-          @for (paragraph of (article().content || '').split('\n\n'); track paragraph) {
-            <p class="text-[15px] leading-8 text-text-primary max-w-2xl mx-auto">{{ paragraph }}</p>
+        <div class="overflow-y-auto p-6 overscroll-contain">
+          @if (article().contentHtml) {
+            <div class="text-[15px] leading-8 text-text-primary max-w-2xl mx-auto space-y-4 [&_p]:mt-4 [&_h2]:text-[18px] [&_h2]:font-semibold [&_h2]:mt-6 [&_h2]:mb-2 [&_h3]:text-[16px] [&_h3]:font-medium [&_h3]:mt-5 [&_h3]:mb-1 [&_li]:ml-4 [&_a]:text-primary [&_a]:underline [&_a]:hover:opacity-80" [innerHTML]="article().contentHtml"></div>
+          } @else {
+            @for (paragraph of (article().content || '').split('\n\n'); track paragraph) {
+              <p class="text-[15px] leading-8 text-text-primary max-w-2xl mx-auto">{{ paragraph }}</p>
+            }
           }
         </div>
       </div>
