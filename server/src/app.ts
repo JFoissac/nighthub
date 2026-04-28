@@ -29,6 +29,10 @@ async function startServer() {
     console.log('[Database] Connected to SQLite');
 
     youtubeService.cleanOrphanChannelIds().catch(console.error);
+
+    // Fire-and-forget cache warm-up (runs in background)
+    youtubeService.preWarmCache().catch(e => console.warn('[YouTube] Pre-warm failed:', e));
+
     aggregatorService.refreshAll();
     console.log('[Aggregator] Initial data fetch started');
 

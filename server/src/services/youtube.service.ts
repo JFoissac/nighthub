@@ -16,7 +16,10 @@ const YT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537
 export class YoutubeService {
   private lastLiveSyncAt = 0;
   private liveSyncInFlight: Promise<void> | null = null;
+  private lastFetchAt = 0;
+  private fetchInFlight: Promise<void> | null = null;
   private static readonly LIVE_SYNC_TTL_MS = 2 * 60 * 1000;
+  private static readonly FETCH_TTL_MS = 5 * 60 * 1000; // 5 minutes between full fetches
 
   /** Get saved channel handles from preferences */
   async getChannelHandles(): Promise<string[]> {
@@ -49,12 +52,16 @@ export class YoutubeService {
         const resolved = await Promise.all(normalized.map(h => this.resolveChannelId(h)));
         const validIds = resolved.filter((id): id is string => id !== null);
         await this.saveChannelIds(validIds);
+
+        // Delete videos from channels we no longer follow
+        await prisma.youtubeVideo.deleteMany({
+          where: { channelId: { notIn: validIds } },
+        });
       } else {
         await this.saveChannelIds([]);
+        // No channels followed = clear all cached videos
+        await prisma.youtubeVideo.deleteMany({});
       }
-
-      // Clean orphan channel IDs and their cached videos
-      await this.cleanOrphanChannelIds();
     } catch (e) {
       console.error('Save youtube channels error:', e);
     }
@@ -74,11 +81,33 @@ export class YoutubeService {
 
       const html = await response.text();
 
+      // Extract channelId from ytInitialData JSON (most reliable)
+      const ytMatch = html.match(/ytInitialData\s*=\s*(\{.*?})<\/script>/s);
+      if (ytMatch) {
+        try {
+          const ytData = JSON.parse(ytMatch[1]);
+          const externalId = ytData?.metadata?.channelMetadataRenderer?.externalId;
+          if (externalId && /^UC[a-zA-Z0-9_-]{22}$/.test(externalId)) {
+            return externalId;
+          }
+        } catch {
+          // JSON parse failed, continue with regex fallback
+        }
+      }
+
+      // Fallback: find the externalId associated with this handle
+      // Look for ownerUrls containing our handle
+      const handleEscaped = normalized.replace('@', '@');
+      const ownerMatch = html.match(new RegExp(`"ownerUrls":\\s*\\["[^"]*${handleEscaped}[^"]*\\][^}]*"externalId":\\s*"(UC[a-zA-Z0-9_-]{22})"`));
+      if (ownerMatch) return ownerMatch[1];
+
+      // Fallback: find channelId near the canonical RSS URL for this handle
+      const rssMatch = html.match(new RegExp(`feeds/videos\\.xml\\?channel_id=(UC[a-zA-Z0-9_-]{22})[^"]*"[^"]*${handleEscaped}`));
+      if (rssMatch) return rssMatch[1];
+
+      // Last fallback: first channelId (might be wrong)
       const match = html.match(/"channelId":"(UC[a-zA-Z0-9_-]{22})"/);
       if (match) return match[1];
-
-      const canonMatch = html.match(/youtube\.com\/channel\/(UC[a-zA-Z0-9_-]{22})/);
-      if (canonMatch) return canonMatch[1];
 
       return null;
     } catch (e) {
@@ -159,45 +188,70 @@ export class YoutubeService {
   }
 
   /**
-   * FAST: Return cached videos from DB (last 3 days, max limit).
-   * If cache is empty (first run), triggers a background fetch without blocking.
+   * FAST: Return cached videos from DB (last 7 days, max limit).
+   * NEVER blocks on fetch - returns cache immediately, updates in background.
    */
   async getLatestVideos(limit: number = 20): Promise<any[]> {
     const cached = await this.getCachedVideos(limit);
-    if (cached.length === 0) {
-      // First run or cache cleared — trigger background fetch without blocking caller
-      setImmediate(() => this.fetchAndCacheLatestVideos().catch(console.error));
+
+    // Always trigger background update if cache is stale, but don't block
+    const now = Date.now();
+    const needsUpdate = cached.length === 0 ||
+                         (cached.length < limit && now - this.lastFetchAt > YoutubeService.FETCH_TTL_MS);
+
+    if (needsUpdate && !this.fetchInFlight) {
+      this.fetchInFlight = this.fetchAndCacheLatestVideos()
+        .finally(() => {
+          this.lastFetchAt = Date.now();
+          this.fetchInFlight = null;
+        })
+        .catch(console.error);
+      setImmediate(() => this.fetchInFlight);
     }
+
     return cached;
   }
 
   /**
+   * Pre-warm the cache at server startup. Returns when complete.
+   * Use sparingly - this is slow.
+   */
+  async preWarmCache(): Promise<void> {
+    console.log('[YouTube] Pre-warming cache...');
+    const start = Date.now();
+    await this.fetchAndCacheLatestVideos();
+    this.lastFetchAt = Date.now();
+    console.log(`[YouTube] Cache warmed in ${Date.now() - start}ms`);
+  }
+
+  /**
    * SLOW: Fetch all channels via RSS in parallel batches, save to DB.
-   * Called by refresh jobs and cron. NOT called by getDashboardData.
+   * Called by refresh jobs, cron, and pre-warm. NOT called by getDashboardData.
    */
   async fetchAndCacheLatestVideos(): Promise<void> {
     const CONCURRENCY = 20;
 
+    // Only use handles - channelIds are just resolved versions of handles
+    // Using both would duplicate the same channels
     const handles = await this.getChannelHandles();
     const channelIds = await this.getChannelIds();
 
-    // Merge: handles first, then IDs not already covered by handles
-    const allSources = [
-      ...handles,
-      ...channelIds.filter(id => !handles.some(h => h === id)),
-    ];
+// Resolve handles to channelIds directly
+    const resolvedResults = await Promise.all(handles.map(h => this.resolveChannelId(h)));
+    const resolvedIds = resolvedResults.filter((id): id is string => id !== null);
+    const allIds = [...new Set([...channelIds, ...resolvedIds])];
 
-    if (allSources.length === 0) return;
+    if (allIds.length === 0) return;
 
-    console.log(`[YouTube] Fetching ${allSources.length} channels with concurrency ${CONCURRENCY}...`);
+    console.log(`[YouTube] Fetching ${allIds.length} channels with concurrency ${CONCURRENCY}...`);
 
     const allVideos: any[] = [];
 
     // Process in parallel batches
-    for (let i = 0; i < allSources.length; i += CONCURRENCY) {
-      const batch = allSources.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < allIds.length; i += CONCURRENCY) {
+      const batch = allIds.slice(i, i + CONCURRENCY);
       const results = await Promise.allSettled(
-        batch.map(handle => this.fetchChannelVideos(handle))
+        batch.map(id => this.fetchChannelVideos(id))
       );
       for (const r of results) {
         if (r.status === 'fulfilled') allVideos.push(...r.value);
@@ -232,9 +286,11 @@ export class YoutubeService {
   private async fetchChannelVideos(handle: string): Promise<any[]> {
     let channelId: string | null = null;
 
+    // If input is already a channelId (UCxxx), use it directly
     if (/^UC[a-zA-Z0-9_-]{22}$/.test(handle)) {
       channelId = handle;
     } else {
+      // Input is a handle (@xxx), resolve to channelId
       channelId = await this.resolveChannelId(handle);
     }
 
@@ -267,7 +323,7 @@ export class YoutubeService {
             channelName,
             channelAvatar: '',
             channelId,
-            channelHandle: handle,
+            channelHandle: handle.startsWith('@') ? handle : channelId,
             duration: '',
             durationSeconds: 0,
             views,
@@ -515,33 +571,22 @@ export class YoutubeService {
 
   async getCachedVideos(limit: number = 20): Promise<any[]> {
     try {
-      const [channelIds, channelHandles] = await Promise.all([
-        this.getChannelIds(),
-        this.getChannelHandles(),
-      ]);
+      const channelIds = await this.getChannelIds();
 
-      if (channelIds.length === 0 && channelHandles.length === 0) return [];
+      if (channelIds.length === 0) return [];
 
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-      const orConditions: any[] = [];
-      if (channelIds.length > 0) {
-        orConditions.push({ channelId: { in: channelIds } });
-      }
-      if (channelHandles.length > 0) {
-        orConditions.push({ channelHandle: { in: channelHandles } });
-      }
 
       const videos = await prisma.youtubeVideo.findMany({
         where: {
           publishedAt: { gte: sevenDaysAgo },
           isLive: false,
-          ...(orConditions.length > 0 ? { OR: orConditions } : {}),
+          channelId: { in: channelIds },
         },
         take: limit,
         orderBy: { publishedAt: 'desc' },
       });
-      console.log(`[YouTube] getCachedVideos: ${videos.length} videos (limit=${limit}, window=7d, channelIds=${channelIds.length}, handles=${channelHandles.length})`);
+      console.log(`[YouTube] getCachedVideos: ${videos.length} videos (limit=${limit}, window=7d, channelIds=${channelIds.length})`);
       if (videos.length > 0) {
         console.log(`[YouTube] getCachedVideos sample: [0] ${videos[0].channelName} | "${videos[0].title?.substring(0, 40)}" | publishedAt=${videos[0].publishedAt}`);
       }
@@ -556,28 +601,17 @@ export class YoutubeService {
     try {
       await this.syncLiveCacheIfNeeded();
 
-      const [channelIds, channelHandles] = await Promise.all([
-        this.getChannelIds(),
-        this.getChannelHandles(),
-      ]);
+      const channelIds = await this.getChannelIds();
 
-      if (channelIds.length === 0 && channelHandles.length === 0) return [];
+      if (channelIds.length === 0) return [];
 
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
-
-      const orConditions: any[] = [];
-      if (channelIds.length > 0) {
-        orConditions.push({ channelId: { in: channelIds } });
-      }
-      if (channelHandles.length > 0) {
-        orConditions.push({ channelHandle: { in: channelHandles } });
-      }
 
       return await prisma.youtubeVideo.findMany({
         where: {
           publishedAt: { gte: threeDaysAgo },
           isLive: true,
-          ...(orConditions.length > 0 ? { OR: orConditions } : {}),
+          channelId: { in: channelIds },
         },
         take: limit,
         orderBy: { publishedAt: 'desc' },
