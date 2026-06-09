@@ -1,0 +1,88 @@
+import { computed, inject } from '@angular/core';
+import { signalStore, withState, withProps, withComputed, withMethods, withHooks, patchState } from '@ngrx/signals';
+import { ApiService } from '../services/api.service';
+import { MarketTicker } from '../models';
+
+export interface MarketState {
+  items: MarketTicker[];
+  loading: boolean;
+  error: string | null;
+  lastUpdated: number | null;
+}
+
+const initialState: MarketState = {
+  items: [],
+  loading: false,
+  error: null,
+  lastUpdated: null,
+};
+
+export const MarketStore = signalStore(
+  { providedIn: 'root' },
+
+  withState(initialState),
+
+  withProps(() => ({
+    _api: inject(ApiService),
+    _timer: null as any,
+  })),
+
+  withComputed((store) => ({
+    tickers: computed(() => store.items()),
+    crypto: computed(() => store.items().filter(t => t.type === 'crypto')),
+    stocks: computed(() => store.items().filter(t => t.type === 'stock')),
+    isLoading: computed(() => store.loading()),
+    hasError: computed(() => store.error() !== null),
+    count: computed(() => store.items().length),
+    isStale: computed(() => {
+      const updated = store.lastUpdated();
+      if (!updated) return true;
+      return Date.now() - updated > 90_000;
+    }),
+  })),
+
+  withMethods((store) => ({
+    reload() {
+      patchState(store, { loading: true, error: null });
+      store._api.getMarketData().subscribe({
+        next: (items) => {
+          patchState(store, { items, loading: false, lastUpdated: Date.now() });
+        },
+        error: (err) => {
+          patchState(store, { loading: false, error: String(err) });
+        },
+      });
+    },
+
+    setItems(items: MarketTicker[]) {
+      patchState(store, { items, lastUpdated: Date.now() });
+    },
+
+    clearError() {
+      patchState(store, { error: null });
+    },
+
+    startAutoRefresh() {
+      this.stopAutoRefresh();
+      store._api.getPreferences().subscribe({
+        next: (prefs) => {
+          const minutes = prefs.marketRefreshInterval ?? 60;
+          const ms = Math.max(5000, minutes * 60 * 1000);
+          store._timer = setInterval(() => this.reload(), ms);
+        },
+        error: () => {},
+      });
+    },
+
+    stopAutoRefresh() {
+      if (store._timer) {
+        clearInterval(store._timer);
+        store._timer = null;
+      }
+    },
+  })),
+
+  withHooks({
+    onInit(store) {},
+  })
+);
