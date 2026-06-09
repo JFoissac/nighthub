@@ -1,94 +1,111 @@
 import { prisma } from '../db/prisma.client';
-import { config } from '../config/env';
+import { logger } from '../utils/logger';
+
+// WMO Weather interpretation codes (https://open-meteo.com/en/docs)
+function getWeatherDescription(code: number): string {
+  const map: Record<number, string> = {
+    0: 'Ensoleillé',
+    1: 'Principalement dégagé',
+    2: 'Partiellement nuageux',
+    3: 'Couvert',
+    45: 'Brouillard',
+    48: 'Brouillard givrant',
+    51: 'Bruine légère',
+    53: 'Bruine modérée',
+    55: 'Bruine dense',
+    56: 'Bruine verglaçante légère',
+    57: 'Bruine verglaçante dense',
+    61: 'Pluie légère',
+    63: 'Pluie modérée',
+    65: 'Pluie forte',
+    66: 'Pluie verglaçante légère',
+    67: 'Pluie verglaçante forte',
+    71: 'Neige légère',
+    73: 'Neige modérée',
+    75: 'Neige forte',
+    77: 'Grains de neige',
+    80: 'Averses de pluie légères',
+    81: 'Averses de pluie modérées',
+    82: 'Averses de pluie violentes',
+    85: 'Averses de neige légères',
+    86: 'Averses de neige fortes',
+    95: 'Orage léger ou modéré',
+    96: 'Orage avec grêle légère',
+    99: 'Orage avec grêle forte',
+  };
+  return map[code] || 'Couvert';
+}
 
 export class WeatherService {
   async getWeeklyForecast(city: string = 'Caen'): Promise<any> {
     try {
-      const apiKey = config.openWeatherMap.apiKey;
-      if (!apiKey) {
-        return this.getCachedWeeklyForecast(city);
+      // 1. Geocode city to lat/lon
+      const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=fr&format=json`;
+      const geoResponse = await fetch(geoUrl);
+      if (!geoResponse.ok) {
+        logger.error('Geocoding API error', { status: geoResponse.status });
+        return this.getCachedOrError(city, 'Open-Meteo geocoding failed');
       }
+      const geoData = await geoResponse.json();
+      if (!geoData.results || geoData.results.length === 0) {
+        logger.error('Geocoding no results', { city });
+        return this.getCachedOrError(city, 'City not found');
+      }
+      const { latitude, longitude, name } = geoData.results[0];
 
-      // Get current weather
-      const currentUrl = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric&lang=fr`;
-      const currentResponse = await fetch(currentUrl);
-
-      // Get 5-day/3-hour forecast (free tier) and aggregate by day
-      const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(city)}&appid=${apiKey}&units=metric&lang=fr`;
+      // 2. Fetch forecast
+      const forecastUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=temperature_2m_max,temperature_2m_min,temperature_2m_mean,weather_code,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,precipitation&timezone=auto&forecast_days=8`;
       const forecastResponse = await fetch(forecastUrl);
-
-      if (!currentResponse.ok || !forecastResponse.ok) {
-        console.error('Weather API error:', currentResponse.status, forecastResponse.status);
-        return this.getCachedWeeklyForecast(city);
+      if (!forecastResponse.ok) {
+        logger.error('Open-Meteo forecast API error', { status: forecastResponse.status });
+        return this.getCachedOrError(city, 'Open-Meteo forecast API failed');
       }
+      const data = await forecastResponse.json();
 
-      const currentData = await currentResponse.json();
-      const forecastData = await forecastResponse.json();
+      // 3. Build days array
+      const days: any[] = [];
+      const daily = data.daily;
+      const current = data.current;
 
-      // Build today's weather
-      const today = {
-        city: currentData.name,
-        temp: Math.round(currentData.main.temp),
-        tempMin: Math.round(currentData.main.temp_min),
-        tempMax: Math.round(currentData.main.temp_max),
-        condition: currentData.weather[0].description,
-        icon: currentData.weather[0].icon,
-        wind: Math.round(currentData.wind.speed * 3.6),
-        humidity: currentData.main.humidity,
-        precipitation: currentData.rain?.['1h'] || currentData.rain?.['3h'] || 0,
-        forecastDate: new Date(),
-        dayIndex: 0,
-      };
+      for (let i = 0; i < daily.time.length && i < 8; i++) {
+        const dateStr = daily.time[i];
+        const isToday = i === 0;
+        const temp = isToday
+          ? Math.round(current.temperature_2m)
+          : Math.round(daily.temperature_2m_mean[i]);
+        const tempMin = Math.round(daily.temperature_2m_min[i]);
+        const tempMax = Math.round(daily.temperature_2m_max[i]);
+        const condition = getWeatherDescription(daily.weather_code[i]);
+        const wind = isToday
+          ? Math.round(current.wind_speed_10m)
+          : Math.round(daily.wind_speed_10m_max[i]);
+        const humidity = isCurrentAvailable(current)
+          ? (isToday ? current.relative_humidity_2m : daily.relative_humidity_2m_mean[i])
+          : 70;
+        const precipitation = isToday
+          ? (current.precipitation || 0)
+          : (daily.precipitation_sum[i] || 0);
 
-      // Aggregate forecast by day
-      const dailyMap = new Map<string, any[]>();
-      for (const item of forecastData.list) {
-        const date = item.dt_txt.split(' ')[0];
-        if (!dailyMap.has(date)) {
-          dailyMap.set(date, []);
-        }
-        dailyMap.get(date)!.push(item);
-      }
-
-      const dailyForecasts: any[] = [today];
-      let dayIndex = 1;
-
-      for (const [dateStr, items] of dailyMap) {
-        if (dayIndex > 6) break;
-
-        const temps = items.map((i: any) => i.main.temp);
-        const winds = items.map((i: any) => i.wind.speed);
-        const humidities = items.map((i: any) => i.main.humidity);
-
-        // Pick the midday entry for condition/icon, or first available
-        const middayEntry = items.find((i: any) => i.dt_txt.includes('12:00:00')) || items[0];
-
-        const rain = items.reduce((sum: number, i: any) => {
-          return sum + (i.rain?.['3h'] || 0);
-        }, 0);
-
-        dailyForecasts.push({
-          city: currentData.name,
-          temp: Math.round(temps.reduce((a: number, b: number) => a + b, 0) / temps.length),
-          tempMin: Math.round(Math.min(...temps)),
-          tempMax: Math.round(Math.max(...temps)),
-          condition: middayEntry.weather[0].description,
-          icon: middayEntry.weather[0].icon,
-          wind: Math.round((winds.reduce((a: number, b: number) => a + b, 0) / winds.length) * 3.6),
-          humidity: Math.round(humidities.reduce((a: number, b: number) => a + b, 0) / humidities.length),
-          precipitation: Math.round(rain),
+        days.push({
+          city: name,
+          temp,
+          tempMin,
+          tempMax,
+          condition,
+          icon: String(daily.weather_code[i]),
+          wind,
+          humidity,
+          precipitation: Math.round(precipitation),
           forecastDate: new Date(dateStr),
-          dayIndex,
+          dayIndex: i,
         });
-
-        dayIndex++;
       }
 
-      await this.cacheWeeklyForecast(dailyForecasts);
-      return { city: currentData.name, days: dailyForecasts };
+      await this.cacheWeeklyForecast(days);
+      return { city: name, days, source: 'live' };
     } catch (error) {
-      console.error('Weather service error:', error);
-      return this.getCachedWeeklyForecast(city);
+      logger.error('Weather service error', error);
+      return this.getCachedOrError(city, 'Open-Meteo service unavailable');
     }
   }
 
@@ -101,9 +118,18 @@ export class WeatherService {
     return forecast;
   }
 
+  private async getCachedOrError(city: string, errorMessage: string): Promise<any> {
+    const cached = await this.getCachedWeeklyForecast(city);
+    if (cached) return cached;
+    return {
+      city,
+      error: `${errorMessage}. Please try again later.`,
+      source: 'error',
+    };
+  }
+
   private async cacheWeeklyForecast(days: any[]): Promise<void> {
     try {
-      // Delete old forecasts for this city
       if (days.length > 0) {
         await prisma.weatherCache.deleteMany({
           where: { city: days[0].city },
@@ -124,11 +150,12 @@ export class WeatherService {
             icon: day.icon,
             forecastDate: day.forecastDate,
             dayIndex: day.dayIndex,
+            source: 'live',
           },
         });
       }
     } catch (error) {
-      console.error('Cache weekly forecast error:', error);
+      logger.error('Cache weekly forecast error', error);
     }
   }
 
@@ -155,42 +182,24 @@ export class WeatherService {
             forecastDate: c.forecastDate,
             dayIndex: c.dayIndex,
           })),
+          source: 'cached',
         };
       }
     } catch (error) {
-      console.error('Get cached weekly forecast error:', error);
+      logger.error('Get cached weekly forecast error', error);
     }
 
-    return this.getMockWeeklyForecast(city);
+    return null;
   }
+}
 
-  private getMockWeeklyForecast(city: string): any {
-    const conditions = [
-      { condition: 'Partiellement nuageux', icon: '03d' },
-      { condition: 'Ensoleille', icon: '01d' },
-      { condition: 'Pluie legere', icon: '10d' },
-      { condition: 'Nuageux', icon: '04d' },
-      { condition: 'Ensoleille', icon: '01d' },
-      { condition: 'Couvert', icon: '04d' },
-      { condition: 'Pluie moderee', icon: '10d' },
-    ];
-
-    const days = conditions.map((c, i) => ({
-      city,
-      temp: 14 + Math.round(Math.random() * 8),
-      tempMin: 10 + Math.round(Math.random() * 4),
-      tempMax: 18 + Math.round(Math.random() * 6),
-      condition: c.condition,
-      icon: c.icon,
-      wind: 10 + Math.round(Math.random() * 20),
-      humidity: 50 + Math.round(Math.random() * 30),
-      precipitation: Math.round(Math.random() * 15),
-      forecastDate: new Date(Date.now() + i * 24 * 60 * 60 * 1000),
-      dayIndex: i,
-    }));
-
-    return { city, days };
-  }
+function isCurrentAvailable(current: any): current is { relative_humidity_2m: number; wind_speed_10m: number; temperature_2m: number; weather_code: number; precipitation: number } {
+  return (
+    current &&
+    typeof current.relative_humidity_2m === 'number' &&
+    typeof current.wind_speed_10m === 'number' &&
+    typeof current.temperature_2m === 'number'
+  );
 }
 
 export function createWeatherService(): WeatherService {

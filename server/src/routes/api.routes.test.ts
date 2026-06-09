@@ -160,18 +160,18 @@ describe('API Routes', () => {
       const handler = getHandler('/weather', 'get');
       const res = mockRes();
       const req = { query: { city: 'Paris' } } as any;
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Paris' });
+      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Paris', source: 'live' });
 
       await handler(req, res);
       expect(weatherService.getWeeklyForecast).toHaveBeenCalledWith('Paris');
-      expect(res.json).toHaveBeenCalledWith({ city: 'Paris' });
+      expect(res.json).toHaveBeenCalledWith({ city: 'Paris', source: 'live' });
     });
 
     it('falls back to Caen for invalid city', async () => {
       const handler = getHandler('/weather', 'get');
       const res = mockRes();
       const req = { query: { city: '123!!!' } } as any;
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Caen' });
+      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Caen', source: 'live' });
 
       await handler(req, res);
       expect(weatherService.getWeeklyForecast).toHaveBeenCalledWith('Caen');
@@ -186,6 +186,26 @@ describe('API Routes', () => {
       await handler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ error: 'Failed to fetch weather' });
+    });
+
+    it('should return 503 with error object when service returns source: "error"', async () => {
+      const handler = getHandler('/weather', 'get');
+      const res = mockRes();
+      const req = { query: {} } as any;
+      (weatherService.getWeeklyForecast as any).mockResolvedValue({
+        city: 'Caen',
+        error: 'Open-Meteo service unavailable. Please try again later.',
+        source: 'error',
+      });
+
+      await handler(req, res);
+      // The endpoint should return 503 Service Unavailable when the service signals an error
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({
+        city: 'Caen',
+        error: 'Open-Meteo service unavailable. Please try again later.',
+        source: 'error',
+      });
     });
   });
 

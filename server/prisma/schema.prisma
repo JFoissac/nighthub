@@ -130,6 +130,7 @@ model WeatherCache {
   icon           String
   forecastDate   DateTime
   dayIndex       Int      @default(0)
+  source         String?  @default("live")
   fetchedAt      DateTime @default(now())
   createdAt      DateTime @default(now())
 
@@ -163,6 +164,11 @@ model UserPreference {
   customRssFeeds      String   @default("")
   refreshInterval     Int      @default(30)
   themeOledBlack      Boolean  @default(false)
+  marketRefreshInterval  Int   @default(60)
+  trumpRefreshInterval   Int   @default(144)
+  newsRefreshInterval    Int   @default(30)
+  streamsRefreshInterval Int   @default(5)
+  youtubeRefreshInterval Int   @default(30)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }

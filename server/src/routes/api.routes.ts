@@ -1,19 +1,22 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { PAGINATION } from '../config/constants';
+import { logger } from '../utils/logger';
 import { weatherService } from '../services/weather.service';
 import { newsService, ARTICLE_EXTRACTION_FAILED, ARTICLE_URL_NOT_ALLOWED } from '../services/news.service';
 import { twitterService } from '../services/twitter.service';
 import { youtubeService } from '../services/youtube.service';
 import { twitchService } from '../services/twitch.service';
 import { trumpService } from '../services/trump.service';
+import { marketService } from '../services/market.service';
 import { aggregatorService } from '../services/aggregator.service';
 
 const router = Router();
 
 const validateLimit = (limit: any): number => {
   const parsed = parseInt(limit, 10);
-  if (isNaN(parsed) || parsed < 1) return 20;
-  if (parsed > 100) return 100;
+  if (isNaN(parsed) || parsed < 1) return PAGINATION.DEFAULT_LIMIT;
+  if (parsed > PAGINATION.MAX_LIMIT) return PAGINATION.MAX_LIMIT;
   return parsed;
 };
 
@@ -69,6 +72,11 @@ const preferencesSchema = z.object({
   customRssFeeds: z.string().optional(),
   refreshInterval: z.number().optional(),
   themeOledBlack: z.boolean().optional(),
+  marketRefreshInterval: z.number().optional(),
+  trumpRefreshInterval: z.number().optional(),
+  newsRefreshInterval: z.number().optional(),
+  streamsRefreshInterval: z.number().optional(),
+  youtubeRefreshInterval: z.number().optional(),
 });
 
 // --- Route handlers ---
@@ -222,6 +230,10 @@ async function getWeather(req: Request, res: Response) {
   try {
     const city = validateCity(req.query.city);
     const forecast = await weatherService.getWeeklyForecast(city);
+    if (forecast && forecast.source === 'error') {
+      res.status(503).json(forecast);
+      return;
+    }
     res.json(forecast);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch weather' });
@@ -265,6 +277,15 @@ async function getDashboard(_req: Request, res: Response) {
     res.json(data);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch dashboard data' });
+  }
+}
+
+async function getMarketLive(_req: Request, res: Response) {
+  try {
+    const data = await marketService.getLiveMarketData();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch market data' });
   }
 }
 
@@ -364,7 +385,7 @@ async function getTwitterAccountStats(_req: Request, res: Response) {
     });
     res.json(result);
   } catch (error) {
-    console.error('[Twitter] account stats error:', error);
+    logger.error('[Twitter] account stats error', error);
     res.json([]);
   }
 }
@@ -388,6 +409,11 @@ async function getPreferences(_req: Request, res: Response) {
       customRssFeeds: pref.customRssFeeds,
       refreshInterval: pref.refreshInterval,
       themeOledBlack: pref.themeOledBlack,
+      marketRefreshInterval: pref.marketRefreshInterval,
+      trumpRefreshInterval: pref.trumpRefreshInterval,
+      newsRefreshInterval: pref.newsRefreshInterval,
+      streamsRefreshInterval: pref.streamsRefreshInterval,
+      youtubeRefreshInterval: pref.youtubeRefreshInterval,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch preferences' });
@@ -396,8 +422,10 @@ async function getPreferences(_req: Request, res: Response) {
 
 async function savePreferences(req: Request, res: Response) {
   try {
+    logger.info('savePreferences: start');
     const { prisma } = await import('../db/prisma.client');
     const body = (req as any).validatedBody as z.infer<typeof preferencesSchema>;
+    logger.info('savePreferences: body parsed', { keys: Object.keys(body) });
 
     const data: Record<string, any> = {};
     let handledYoutubeChannels = false;
@@ -410,7 +438,10 @@ async function savePreferences(req: Request, res: Response) {
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      await youtubeService.saveChannelHandles(handles);
+      if (handles.length > 0) {
+        logger.info('savePreferences: saving youtube channels', { count: handles.length });
+        await youtubeService.saveChannelHandles(handles);
+      }
       handledYoutubeChannels = true;
     }
     if (typeof body.youtubeChannelIds === 'string' && !handledYoutubeChannels) {
@@ -420,18 +451,29 @@ async function savePreferences(req: Request, res: Response) {
     if (typeof body.twitterAccounts === 'string') data.twitterAccounts = body.twitterAccounts.substring(0, 50000);
     if (typeof body.trumpMinCriticality === 'number') data.trumpMinCriticality = Math.max(0, Math.min(10, body.trumpMinCriticality));
     if (typeof body.customRssFeeds === 'string') data.customRssFeeds = body.customRssFeeds.substring(0, 10000);
-    if (typeof body.refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(60, body.refreshInterval));
+    if (typeof body.refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(360, body.refreshInterval));
     if (typeof body.themeOledBlack === 'boolean') data.themeOledBlack = body.themeOledBlack;
 
+    // Per-block refresh intervals (5 min to 6h = 360 min)
+    const clampInterval = (n: number) => Math.max(5, Math.min(360, Math.round(n)));
+    if (typeof body.marketRefreshInterval === 'number') data.marketRefreshInterval = clampInterval(body.marketRefreshInterval);
+    if (typeof body.trumpRefreshInterval === 'number') data.trumpRefreshInterval = clampInterval(body.trumpRefreshInterval);
+    if (typeof body.newsRefreshInterval === 'number') data.newsRefreshInterval = clampInterval(body.newsRefreshInterval);
+    if (typeof body.streamsRefreshInterval === 'number') data.streamsRefreshInterval = clampInterval(body.streamsRefreshInterval);
+    if (typeof body.youtubeRefreshInterval === 'number') data.youtubeRefreshInterval = clampInterval(body.youtubeRefreshInterval);
+
+    logger.info('savePreferences: upserting', { dataKeys: Object.keys(data) });
     const existing = await prisma.userPreference.findFirst();
     if (existing) {
       await prisma.userPreference.update({ where: { id: existing.id }, data });
     } else {
       await prisma.userPreference.create({ data });
     }
+    logger.info('savePreferences: success');
     res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to save preferences' });
+  } catch (error: any) {
+    logger.error('savePreferences: error', { error: error?.message || String(error) });
+    res.status(500).json({ error: 'Failed to save preferences', details: error?.message || String(error) });
   }
 }
 
@@ -455,6 +497,7 @@ router.get('/weather', getWeather);
 
 router.get('/dashboard/stream', getDashboardStream);
 router.get('/dashboard', getDashboard);
+router.get('/market/live', getMarketLive);
 
 router.post('/refresh/all', refreshAll);
 router.post('/refresh/news', refreshNews);
@@ -468,5 +511,7 @@ router.get('/twitter/account-stats', getTwitterAccountStats);
 
 router.get('/preferences', getPreferences);
 router.post('/preferences', validateBody(preferencesSchema), savePreferences);
+
+export { validateLimit, validateCity };
 
 export default router;
