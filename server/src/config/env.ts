@@ -28,13 +28,6 @@ export const config = {
     redirectUri: process.env.TWITCH_REDIRECT_URI || 'http://localhost:3000/api/auth/twitch/callback',
   },
 
-  twitter: {
-    clientId: process.env.TWITTER_CLIENT_ID || '',
-    clientSecret: process.env.TWITTER_CLIENT_SECRET || '',
-    bearerToken: process.env.TWITTER_BEARER_TOKEN || '',
-    redirectUri: process.env.TWITTER_REDIRECT_URI || 'http://localhost:3000/api/auth/twitter/callback',
-  },
-
   openWeatherMap: {
     apiKey: process.env.OPENWEATHERMAP_API_KEY || '',
   },

@@ -29,7 +29,6 @@ describe('ApiService', () => {
   it('should call dashboard endpoint on getDashboard', () => {
     const mockData = {
       weather: {},
-      tweets: [],
       streams: [],
       videos: [],
       news: [],
@@ -42,17 +41,6 @@ describe('ApiService', () => {
     const req = httpTesting.expectOne('http://localhost:3000/api/dashboard');
     expect(req.request.method).toBe('GET');
     req.flush(mockData);
-  });
-
-  it('should call tweets endpoint on getTweets', () => {
-    service.getTweets().subscribe((data) => {
-      expect(data).toEqual([]);
-    });
-    const req = httpTesting.expectOne(
-      'http://localhost:3000/api/tweets?limit=20'
-    );
-    expect(req.request.method).toBe('GET');
-    req.flush([]);
   });
 
   it('should call streams endpoint on getStreams', () => {

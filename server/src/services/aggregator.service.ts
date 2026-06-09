@@ -232,7 +232,6 @@ export class AggregatorService {
         videos: this.sortByRelevance(videoData, 'video'),
         news: newsData,
         trump: trumpData,
-        tweets: [],
         refreshedAt: new Date(),
       };
     } catch (error) {
@@ -244,7 +243,6 @@ export class AggregatorService {
         videos: [],
         news: [],
         trump: [],
-        tweets: [],
         refreshedAt: new Date(),
       };
     }

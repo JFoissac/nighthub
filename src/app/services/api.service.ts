@@ -12,16 +12,9 @@ export interface DashboardData {
   refreshedAt: Date;
 }
 
-export interface TwitterAccountStat {
-  handle: string;
-  lastSeen: string | null;
-  inactive: boolean;
-}
-
 export interface AuthStatus {
   youtube: boolean;
   twitch: boolean;
-  twitter: boolean;
 }
 
 export interface UserPreferences {
@@ -30,8 +23,6 @@ export interface UserPreferences {
   twitchUsername: string;
   youtubeChannels: string;
   youtubeChannelIds: string;
-  twitterUsername: string;
-  twitterAccounts: string;
   trumpMinCriticality: number;
   customRssFeeds: string;
   refreshInterval: number;
@@ -170,12 +161,6 @@ export class ApiService {
     });
   }
 
-  getTweets(limit: number = 20): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/tweets?limit=${limit}`).pipe(
-      catchError(this.handleError)
-    );
-  }
-
   getTrumpTweets(limit: number = 20): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/trump?limit=${limit}`).pipe(
       catchError(this.handleError)
@@ -261,19 +246,7 @@ export class ApiService {
     );
   }
 
-  connectTwitter(): void {
-    const width = 600;
-    const height = 700;
-    const left = (window.innerWidth - width) / 2;
-    const top = (window.innerHeight - height) / 2;
-    window.open(
-      'http://localhost:3000/api/auth/twitter',
-      'Twitter OAuth',
-      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
-    );
-  }
-
-  logout(provider: 'youtube' | 'twitch' | 'twitter'): Observable<any> {
+  logout(provider: 'youtube' | 'twitch'): Observable<any> {
     return this.http.post('http://localhost:3000/api/auth/logout', { provider }).pipe(
       catchError(this.handleError)
     );
@@ -301,12 +274,6 @@ export class ApiService {
     return this.http.post<{ imported: number; channels: string[] }>(
       `${this.baseUrl}/youtube/import-list`, { channels }
     ).pipe(catchError(this.handleError));
-  }
-
-  getTwitterAccountStats(): Observable<TwitterAccountStat[]> {
-    return this.http.get<TwitterAccountStat[]>(`${this.baseUrl}/twitter/account-stats`).pipe(
-      catchError(this.handleError)
-    );
   }
 
   detectFeed(url: string): Observable<{ feedUrl: string }> {

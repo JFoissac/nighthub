@@ -99,7 +99,6 @@ export interface YoutubeVideo {
 
 export interface TweetItem {
   id: string;
-  twitterId?: string;
   authorName: string;
   authorHandle: string;
   authorAvatar: string;
@@ -132,8 +131,6 @@ export interface UserPreferences {
   twitchUsername: string;
   youtubeChannels: string;
   youtubeChannelIds: string;
-  twitterUsername: string;
-  twitterAccounts: string;
   trumpMinCriticality: number;
   customRssFeeds: string;
   refreshInterval: number;

@@ -33,9 +33,6 @@ TWITCH_CLIENT_ID=your_twitch_client_id
 TWITCH_CLIENT_SECRET=your_twitch_client_secret
 TWITCH_REDIRECT_URI=http://localhost:3000/api/auth/twitch/callback
 
-# Twitter Bearer Token
-TWITTER_BEARER_TOKEN=your_twitter_bearer_token
-
 # OpenWeatherMap API Key
 OPENWEATHERMAP_API_KEY=your_openweathermap_api_key
 
@@ -88,7 +85,6 @@ npm start
 - `GET /api/dashboard` - Get all dashboard data
 - `GET /api/weather?city=Caen` - Get weather for city
 - `GET /api/news?limit=20` - Get AI news
-- `GET /api/tweets?limit=20` - Get Twitter timeline
 - `GET /api/streams` - Get Twitch streams
 - `GET /api/videos` - Get YouTube videos
 
@@ -137,7 +133,6 @@ server/
 │   └── services/
 │       ├── aggregator.service.ts  # Data aggregation & cron jobs
 │       ├── news.service.ts        # AI news RSS feeds
-│       ├── twitter.service.ts     # Twitter API
 │       ├── twitch.service.ts      # Twitch API
 │       ├── weather.service.ts     # OpenWeatherMap
 │       └── youtube.service.ts     # YouTube API
@@ -146,7 +141,7 @@ server/
 
 ## Data Refresh Schedule
 
-- **Every 30 minutes**: Refresh all data (weather, news, tweets, videos, streams)
+- **Every 30 minutes**: Refresh all data (weather, news, videos, streams, Trump)
 - **Every 5 minutes**: Check Twitch streams for live status
 
 ## Troubleshooting

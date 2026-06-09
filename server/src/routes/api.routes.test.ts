@@ -41,13 +41,6 @@ vi.mock('../services/news.service', () => ({
   },
 }));
 
-vi.mock('../services/twitter.service', () => ({
-  twitterService: {
-    getTimeline: vi.fn(),
-    getTwitterAccounts: vi.fn(),
-  },
-}));
-
 vi.mock('../services/youtube.service', () => ({
   youtubeService: {
     getLatestVideos: vi.fn(),
@@ -97,7 +90,6 @@ vi.mock('../services/aggregator.service', () => ({
 import router from './api.routes';
 import { weatherService } from '../services/weather.service';
 import { newsService } from '../services/news.service';
-import { twitterService } from '../services/twitter.service';
 import { youtubeService } from '../services/youtube.service';
 import { twitchService } from '../services/twitch.service';
 import { trumpService } from '../services/trump.service';
@@ -229,19 +221,6 @@ describe('API Routes', () => {
 
       await handler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
-    });
-  });
-
-  describe('GET /tweets', () => {
-    it('returns tweets with limit', async () => {
-      const handler = getHandler('/tweets', 'get');
-      const res = mockRes();
-      const req = { query: { limit: '5' } } as any;
-      (twitterService.getTimeline as any).mockResolvedValue([{ id: 't1' }]);
-
-      await handler(req, res);
-      expect(twitterService.getTimeline).toHaveBeenCalledWith(5);
-      expect(res.json).toHaveBeenCalledWith([{ id: 't1' }]);
     });
   });
 
@@ -410,7 +389,7 @@ describe('API Routes', () => {
       const handler = getHandler('/dashboard', 'get');
       const res = mockRes();
       const req = {} as any;
-      const data = { weather: null, tweets: [], streams: [], videos: [], news: [], trump: [], refreshedAt: new Date() };
+      const data = { weather: null, streams: [], videos: [], news: [], trump: [], refreshedAt: new Date() };
       (aggregatorService.getDashboardData as any).mockResolvedValue(data);
 
       await handler(req, res);
@@ -646,25 +625,6 @@ describe('API Routes', () => {
     });
   });
 
-  describe('GET /twitter/account-stats', () => {
-    it('returns stats for accounts', async () => {
-      const handler = getHandler('/twitter/account-stats', 'get');
-      const res = mockRes();
-      const req = {} as any;
-      (twitterService.getTwitterAccounts as any).mockResolvedValue(['elonmusk', 'jack']);
-      (prisma.$queryRaw as any).mockResolvedValue([
-        { authorHandle: '@elonmusk', lastSeen: new Date().toISOString() },
-      ]);
-
-      await handler(req, res);
-      const result = res.json.mock.calls[0][0];
-      expect(result).toHaveLength(2);
-      expect(result[0].handle).toBe('elonmusk');
-      expect(result[0].inactive).toBe(false);
-      expect(result[1].inactive).toBe(true);
-    });
-  });
-
   describe('GET /preferences', () => {
     it('returns existing preferences', async () => {
       const handler = getHandler('/preferences', 'get');
@@ -676,8 +636,6 @@ describe('API Routes', () => {
         twitchUsername: '',
         youtubeChannels: '',
         youtubeChannelIds: '',
-        twitterUsername: '',
-        twitterAccounts: '',
         trumpMinCriticality: 3,
         customRssFeeds: '',
         refreshInterval: 30,

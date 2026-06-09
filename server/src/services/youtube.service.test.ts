@@ -22,7 +22,6 @@ vi.mock('../config/env', () => ({
     nodeEnv: 'test',
     youtube: { clientId: '', clientSecret: '', redirectUri: '' },
     twitch: { clientId: '', clientSecret: '', redirectUri: '' },
-    twitter: { clientId: '', clientSecret: '', bearerToken: '', redirectUri: '' },
     openWeatherMap: { apiKey: '' },
     piped: { instanceUrl: 'https://pipedapi.test.local' },
     database: { url: 'file:./dev.db' },

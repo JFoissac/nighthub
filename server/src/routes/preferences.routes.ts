@@ -11,8 +11,6 @@ const preferencesSchema = z.object({
   twitchUsername: z.string().optional(),
   youtubeChannels: z.string().optional(),
   youtubeChannelIds: z.string().optional(),
-  twitterUsername: z.string().optional(),
-  twitterAccounts: z.string().optional(),
   trumpMinCriticality: z.number().optional(),
   customRssFeeds: z.string().optional(),
   refreshInterval: z.number().optional(),
@@ -43,8 +41,6 @@ async function getPreferences(_req: Request, res: Response) {
       twitchUsername: pref.twitchUsername,
       youtubeChannels: pref.youtubeChannels,
       youtubeChannelIds: pref.youtubeChannelIds,
-      twitterUsername: pref.twitterUsername,
-      twitterAccounts: pref.twitterAccounts,
       trumpMinCriticality: pref.trumpMinCriticality,
       customRssFeeds: pref.customRssFeeds,
       refreshInterval: pref.refreshInterval,
@@ -76,8 +72,6 @@ async function savePreferences(req: Request, res: Response) {
     if (typeof body.youtubeChannelIds === 'string' && !handledYoutubeChannels) {
       data.youtubeChannelIds = body.youtubeChannelIds.substring(0, 50000);
     }
-    if (typeof body.twitterUsername === 'string') data.twitterUsername = body.twitterUsername.substring(0, 100);
-    if (typeof body.twitterAccounts === 'string') data.twitterAccounts = body.twitterAccounts.substring(0, 50000);
     if (typeof body.trumpMinCriticality === 'number') data.trumpMinCriticality = Math.max(0, Math.min(10, body.trumpMinCriticality));
     if (typeof body.customRssFeeds === 'string') data.customRssFeeds = body.customRssFeeds.substring(0, 10000);
     if (typeof body.refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(60, body.refreshInterval));

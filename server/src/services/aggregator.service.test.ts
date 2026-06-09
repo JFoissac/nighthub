@@ -36,13 +36,6 @@ vi.mock('./news.service', () => ({
   },
 }));
 
-vi.mock('./twitter.service', () => ({
-  twitterService: {
-    getTimeline: vi.fn(),
-    getTwitterAccounts: vi.fn(),
-  },
-}));
-
 vi.mock('./youtube.service', () => ({
   youtubeService: {
     fetchAndCacheLatestVideos: vi.fn(),
@@ -77,7 +70,6 @@ vi.mock('./trump.service', () => ({
 import { aggregatorService } from './aggregator.service';
 import { weatherService } from './weather.service';
 import { newsService } from './news.service';
-import { twitterService } from './twitter.service';
 import { youtubeService } from './youtube.service';
 import { twitchService } from './twitch.service';
 import { trumpService } from './trump.service';
@@ -198,7 +190,6 @@ describe('AggregatorService', () => {
     it('calls all underlying services', async () => {
       (weatherService.getWeeklyForecast as any).mockResolvedValue({});
       (newsService.fetchAiNews as any).mockResolvedValue([]);
-      (twitterService.getTimeline as any).mockResolvedValue([]);
       (youtubeService.fetchAndCacheLatestVideos as any).mockResolvedValue(undefined);
       (twitchService.getFollowedStreams as any).mockResolvedValue([]);
       (trumpService.fetchTrumpTweets as any).mockResolvedValue([]);
@@ -207,8 +198,6 @@ describe('AggregatorService', () => {
 
       expect(weatherService.getWeeklyForecast).toHaveBeenCalledWith('Caen');
       expect(newsService.fetchAiNews).toHaveBeenCalled();
-      // Twitter/Nitter disabled — no longer called
-      // expect(twitterService.getTimeline).toHaveBeenCalledWith(20);
       expect(youtubeService.fetchAndCacheLatestVideos).toHaveBeenCalled();
       expect(twitchService.getFollowedStreams).toHaveBeenCalled();
       expect(trumpService.fetchTrumpTweets).toHaveBeenCalledWith(20);
@@ -288,7 +277,6 @@ describe('AggregatorService', () => {
       (youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
       (newsService.getCachedNews as any).mockResolvedValue([{ title: 'news1', fetchedAt: new Date().toISOString() }]);
       (trumpService.getCachedTrumpTweets as any).mockResolvedValue([{ content: 'trump1', criticality: 3 }]);
-      (twitterService.getTimeline as any).mockResolvedValue([{ content: 'tweet1', createdAt: new Date().toISOString() }]);
 
       const result = await aggregatorService.getDashboardData();
 
@@ -298,7 +286,6 @@ describe('AggregatorService', () => {
       expect(result.videos).toHaveLength(1);
       expect(result.news).toHaveLength(1);
       expect(result.trump).toHaveLength(1);
-      expect(result.tweets).toHaveLength(0); // Twitter/Nitter disabled
       expect(result.refreshedAt).toBeInstanceOf(Date);
     });
 
@@ -329,7 +316,6 @@ describe('AggregatorService', () => {
       (youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
       (newsService.getCachedNews as any).mockResolvedValue([]);
       (trumpService.getCachedTrumpTweets as any).mockResolvedValue([]);
-      (twitterService.getTimeline as any).mockResolvedValue([]);
 
       const progressSteps: string[] = [];
       await aggregatorService.getDashboardData((step) => progressSteps.push(step));
@@ -348,7 +334,6 @@ describe('AggregatorService', () => {
       (youtubeService.getLatestVideos as any).mockResolvedValue([]);
       (youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
       (newsService.getCachedNews as any).mockResolvedValue([]);
-      (twitterService.getTimeline as any).mockResolvedValue([]);
 
       const trumpTweets = [
         { content: 'low', criticality: 2 },
@@ -369,7 +354,6 @@ describe('AggregatorService', () => {
       const result = await aggregatorService.getDashboardData();
 
       expect(result.weather).toBeNull();
-      expect(result.tweets).toEqual([]);
       expect(result.streams).toEqual([]);
       expect(result.videos).toEqual([]);
       expect(result.news).toEqual([]);

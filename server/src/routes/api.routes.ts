@@ -4,7 +4,6 @@ import { PAGINATION } from '../config/constants';
 import { logger } from '../utils/logger';
 import { weatherService } from '../services/weather.service';
 import { newsService, ARTICLE_EXTRACTION_FAILED, ARTICLE_URL_NOT_ALLOWED } from '../services/news.service';
-import { twitterService } from '../services/twitter.service';
 import { youtubeService } from '../services/youtube.service';
 import { twitchService } from '../services/twitch.service';
 import { trumpService } from '../services/trump.service';
@@ -66,8 +65,6 @@ const preferencesSchema = z.object({
   twitchUsername: z.string().optional(),
   youtubeChannels: z.string().optional(),
   youtubeChannelIds: z.string().optional(),
-  twitterUsername: z.string().optional(),
-  twitterAccounts: z.string().optional(),
   trumpMinCriticality: z.number().optional(),
   customRssFeeds: z.string().optional(),
   refreshInterval: z.number().optional(),
@@ -80,16 +77,6 @@ const preferencesSchema = z.object({
 });
 
 // --- Route handlers ---
-
-async function getTweets(req: Request, res: Response) {
-  try {
-    const limit = validateLimit(req.query.limit);
-    const tweets = await twitterService.getTimeline(limit);
-    res.json(tweets);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch tweets' });
-  }
-}
 
 async function getTrump(req: Request, res: Response) {
   try {
@@ -361,35 +348,6 @@ async function extractNewsArticle(req: Request, res: Response) {
   }
 }
 
-async function getTwitterAccountStats(_req: Request, res: Response) {
-  try {
-    const { prisma } = await import('../db/prisma.client');
-    const accounts = await twitterService.getTwitterAccounts();
-    if (!accounts.length) {
-      return res.json([]);
-    }
-    const stats = await prisma.$queryRaw<{ authorHandle: string; lastSeen: string }[]>`
-      SELECT authorHandle, MAX(fetchedAt) as lastSeen FROM Tweet GROUP BY authorHandle
-    `;
-    const statsMap = new Map(stats.map(s => [
-      s.authorHandle.replace('@', '').toLowerCase(),
-      new Date(s.lastSeen),
-    ]));
-    const result = accounts.map(handle => {
-      const d = statsMap.get(handle.toLowerCase());
-      return {
-        handle,
-        lastSeen: d ? d.toISOString() : null,
-        inactive: !d || (Date.now() - d.getTime()) > 7 * 24 * 60 * 60 * 1000,
-      };
-    });
-    res.json(result);
-  } catch (error) {
-    logger.error('[Twitter] account stats error', error);
-    res.json([]);
-  }
-}
-
 async function getPreferences(_req: Request, res: Response) {
   try {
     const { prisma } = await import('../db/prisma.client');
@@ -403,8 +361,6 @@ async function getPreferences(_req: Request, res: Response) {
       twitchUsername: pref.twitchUsername,
       youtubeChannels: pref.youtubeChannels,
       youtubeChannelIds: pref.youtubeChannelIds,
-      twitterUsername: pref.twitterUsername,
-      twitterAccounts: pref.twitterAccounts,
       trumpMinCriticality: pref.trumpMinCriticality,
       customRssFeeds: pref.customRssFeeds,
       refreshInterval: pref.refreshInterval,
@@ -447,8 +403,6 @@ async function savePreferences(req: Request, res: Response) {
     if (typeof body.youtubeChannelIds === 'string' && !handledYoutubeChannels) {
       data.youtubeChannelIds = body.youtubeChannelIds.substring(0, 50000);
     }
-    if (typeof body.twitterUsername === 'string') data.twitterUsername = body.twitterUsername.substring(0, 100);
-    if (typeof body.twitterAccounts === 'string') data.twitterAccounts = body.twitterAccounts.substring(0, 50000);
     if (typeof body.trumpMinCriticality === 'number') data.trumpMinCriticality = Math.max(0, Math.min(10, body.trumpMinCriticality));
     if (typeof body.customRssFeeds === 'string') data.customRssFeeds = body.customRssFeeds.substring(0, 10000);
     if (typeof body.refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(360, body.refreshInterval));
@@ -479,7 +433,6 @@ async function savePreferences(req: Request, res: Response) {
 
 // --- Routes ---
 
-router.get('/tweets', getTweets);
 router.get('/trump', getTrump);
 router.get('/streams', getStreams);
 router.get('/follows', getFollows);
@@ -506,8 +459,6 @@ router.post('/refresh/trump', refreshTrump);
 
 router.post('/sites/detect-feed', validateBody(detectFeedSchema), detectFeed);
 router.post('/news/extract', validateBody(extractNewsSchema), extractNewsArticle);
-
-router.get('/twitter/account-stats', getTwitterAccountStats);
 
 router.get('/preferences', getPreferences);
 router.post('/preferences', validateBody(preferencesSchema), savePreferences);
