@@ -67,8 +67,12 @@ export const TrumpStore = signalStore(
       this.loadMore();
     },
 
+    setLoading(loading: boolean) {
+      patchState(store, { loading });
+    },
+
     setItems(items: TrumpItem[]) {
-      patchState(store, { items, atEnd: false, lastUpdated: Date.now() });
+      patchState(store, { items, atEnd: false, loading: false, error: null, lastUpdated: Date.now() });
     },
 
     clearError() {

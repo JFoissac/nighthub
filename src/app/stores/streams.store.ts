@@ -57,7 +57,10 @@ export const StreamsStore = signalStore(
 
   withMethods((store) => ({
     setItems(items: TwitchStream[]) {
-      patchState(store, { items, lastUpdated: Date.now() });
+      patchState(store, { items, loading: false, error: null, lastUpdated: Date.now() });
+    },
+    setLoading(loading: boolean) {
+      patchState(store, { loading });
     },
     setGameFilter(game: string | null) {
       patchState(store, { gameFilter: game });

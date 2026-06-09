@@ -61,41 +61,20 @@ describe('NewsSectionComponent', () => {
   }
 
   it('clicking article triggers extraction API call', async () => {
-    const fetchSpy = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        title: 'AI Launch Full Text',
-        source: 'example.com',
-        content: 'Paragraph 1.\n\nParagraph 2.',
-        url: newsItem.url,
-      }),
-    } as Response);
-    global.fetch = fetchSpy;
-
     clickArticleCard();
     await fixture.whenStable();
     fixture.detectChanges();
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      'http://localhost:3000/api/news/extract',
-      expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: newsItem.url }),
-      })
-    );
+    expect(mockApiService.extractNewsArticle).toHaveBeenCalledWith(newsItem.url);
   });
 
   it('opens in-app popup with extracted raw text on success', async () => {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        title: 'AI Launch Full Text',
-        source: 'example.com',
-        content: 'Paragraph 1.\n\nParagraph 2.',
-        url: newsItem.url,
-      }),
-    } as Response);
+    mockApiService.extractNewsArticle.mockReturnValue(of({
+      title: 'AI Launch Full Text',
+      source: 'example.com',
+      content: 'Paragraph 1.\n\nParagraph 2.',
+      url: newsItem.url,
+    }));
 
     clickArticleCard();
     await fixture.whenStable();
@@ -110,7 +89,7 @@ describe('NewsSectionComponent', () => {
   });
 
   it('opens original URL in new tab with noopener,noreferrer on extraction failure', async () => {
-    global.fetch = jest.fn().mockRejectedValue(new Error('ARTICLE_EXTRACTION_FAILED'));
+    mockApiService.extractNewsArticle.mockReturnValue(throwError(() => new Error('ARTICLE_EXTRACTION_FAILED')));
     const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null);
 
     clickArticleCard();

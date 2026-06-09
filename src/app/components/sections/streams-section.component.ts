@@ -21,35 +21,43 @@ import { StreamCardComponent } from '../stream/stream-card.component';
           <span class="font-label-caps text-[11px] tracking-widest text-on-surface-variant group-hover:text-primary">LIVE STREAMS</span>
         </button>
       </div>
-      @if (store.gameList().length > 0) {
-        <div class="flex gap-2 mb-3 overflow-x-auto scrollbar-hide">
-          <button
-            (click)="store.setGameFilter(null)"
-            class="font-label-caps text-[9px] px-2 py-1 rounded whitespace-nowrap transition-colors"
-            [class.bg-secondary]="!store.gameFilter()"
-            [class.text-background]="!store.gameFilter()"
-            [class.bg-[#1E1E2E]]="store.gameFilter()"
-            [class.text-text-muted]="store.gameFilter()"
-            [attr.aria-pressed]="!store.gameFilter()"
-          >
-            TOUS ({{ store.count() }})
-          </button>
-          @for (game of store.gameList(); track game.name) {
-            <button
-              (click)="store.setGameFilter(game.name)"
-              class="font-label-caps text-[9px] px-2 py-1 rounded whitespace-nowrap transition-colors"
-              [class.bg-secondary]="store.gameFilter() === game.name"
-              [class.text-background]="store.gameFilter() === game.name"
-              [class.bg-[#1E1E2E]]="store.gameFilter() !== game.name"
-              [class.text-text-muted]="store.gameFilter() !== game.name"
-              [attr.aria-pressed]="store.gameFilter() === game.name"
-            >
-              {{ game.name | uppercase }} ({{ game.count }})
-            </button>
-          }
+      @if (store.isLoading() && !store.count()) {
+        <div class="neo-glass rounded p-6 flex items-center gap-4">
+          <div class="flex-1 space-y-3">
+            <div class="h-3 w-28 rounded bg-[#1E1E2E]/60 animate-pulse"></div>
+            <div class="h-3 w-40 rounded bg-[#1E1E2E]/40 animate-pulse"></div>
+          </div>
+          <div class="h-8 w-24 rounded bg-[#1E1E2E]/50 animate-pulse"></div>
         </div>
-      }
-      @if (store.filteredStreams().length) {
+      } @else if (store.filteredStreams().length) {
+        @if (store.gameList().length > 0) {
+          <div class="flex gap-2 mb-3 overflow-x-auto scrollbar-hide">
+            <button
+              (click)="store.setGameFilter(null)"
+              class="font-label-caps text-[9px] px-2 py-1 rounded whitespace-nowrap transition-colors"
+              [class.bg-secondary]="!store.gameFilter()"
+              [class.text-background]="!store.gameFilter()"
+              [class.bg-[#1E1E2E]]="store.gameFilter()"
+              [class.text-text-muted]="store.gameFilter()"
+              [attr.aria-pressed]="!store.gameFilter()"
+            >
+              TOUS ({{ store.count() }})
+            </button>
+            @for (game of store.gameList(); track game.name) {
+              <button
+                (click)="store.setGameFilter(game.name)"
+                class="font-label-caps text-[9px] px-2 py-1 rounded whitespace-nowrap transition-colors"
+                [class.bg-secondary]="store.gameFilter() === game.name"
+                [class.text-background]="store.gameFilter() === game.name"
+                [class.bg-[#1E1E2E]]="store.gameFilter() !== game.name"
+                [class.text-text-muted]="store.gameFilter() !== game.name"
+                [attr.aria-pressed]="store.gameFilter() === game.name"
+              >
+                {{ game.name | uppercase }} ({{ game.count }})
+              </button>
+            }
+          </div>
+        }
         <div class="relative group/scroll">
           <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory" #scrollContainer>
             @for (stream of store.filteredStreams(); track stream.twitchId || stream.id || $index) {

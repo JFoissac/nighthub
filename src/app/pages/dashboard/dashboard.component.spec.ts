@@ -1,5 +1,5 @@
 import { signal } from '@angular/core';
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { RouterTestingModule } from '@angular/router/testing';
 import { DashboardComponent } from './dashboard.component';
@@ -25,27 +25,50 @@ class MockIntersectionObserver {
 
 global.IntersectionObserver = MockIntersectionObserver as any;
 
-const createMockStore = () => ({
-  setItems: jest.fn(),
-  setGameFilter: jest.fn(),
-  loadMore: jest.fn(),
-  reload: jest.fn(),
-  count: signal(0),
-  isLoading: signal(false),
-  items: signal([]),
-  videos: signal([]),
-  news: signal([]),
-  streams: signal([]),
-  filteredStreams: signal([]),
-  gameList: signal([]),
-  gameFilter: signal<string | null>(null),
-  tweets: signal([]),
-  market: signal([]),
-  hasError: signal(false),
-  loading: signal(false),
-  error: signal(null),
-  atEnd: signal(false),
-});
+const createMockStore = () => {
+  const store: any = {
+    count: signal(0),
+    isLoading: signal(false),
+    items: signal([]),
+    videos: signal([]),
+    news: signal([]),
+    streams: signal([]),
+    filteredStreams: signal([]),
+    gameList: signal([]),
+    gameFilter: signal<string | null>(null),
+    tweets: signal([]),
+    crypto: signal([]),
+    stocks: signal([]),
+    market: signal([]),
+    hasError: signal(false),
+    loading: signal(false),
+    error: signal(null),
+    atEnd: signal(false),
+  };
+
+  store.setItems = (items: any[]) => {
+    store.items.set(items);
+    store.videos.set(items);
+    store.news.set(items);
+    store.streams.set(items);
+    store.filteredStreams.set(items);
+    store.count.set(items.length);
+    store.loading.set(false);
+    store.isLoading.set(false);
+  };
+
+  store.setGameFilter = jest.fn();
+  store.setLoading = (loading: boolean) => {
+    store.loading.set(loading);
+    store.isLoading.set(loading);
+  };
+  store.loadMore = jest.fn();
+  store.reload = jest.fn(() => store.setLoading(true));
+  store.startAutoRefresh = jest.fn();
+  store.stopAutoRefresh = jest.fn();
+
+  return store;
+};
 
 const createStream = (overrides: Partial<any> = {}) => ({
   id: 'stream-a',
@@ -72,11 +95,8 @@ describe('DashboardComponent', () => {
   let mockTrumpStore: any;
   let mockStreamsStore: any;
   let mockMarketStore: any;
-  let refreshAllSubject: Subject<any>;
 
   beforeEach(async () => {
-    refreshAllSubject = new Subject();
-
     mockApiService = {
       getDashboardStream: jest.fn().mockReturnValue(of({
         videos: [],
@@ -96,8 +116,22 @@ describe('DashboardComponent', () => {
         weather: null,
         refreshedAt: new Date(),
       })),
-      refreshAll: jest.fn().mockReturnValue(refreshAllSubject.asObservable()),
-      getPreferences: jest.fn().mockReturnValue(of({ customRssFeeds: '' })),
+      getPreferences: jest.fn().mockReturnValue(of({
+        weatherCity: 'Caen',
+        twitchFollows: '',
+        twitchUsername: '',
+        youtubeChannels: '',
+        youtubeChannelIds: '',
+        trumpMinCriticality: 0,
+        customRssFeeds: '',
+        refreshInterval: 30,
+        themeOledBlack: false,
+        marketRefreshInterval: 60,
+        trumpRefreshInterval: 144,
+        newsRefreshInterval: 30,
+        streamsRefreshInterval: 5,
+        youtubeRefreshInterval: 30,
+      })),
       savePreferences: jest.fn().mockReturnValue(of({})),
       refreshNews: jest.fn().mockReturnValue(of({})),
       getNews: jest.fn().mockReturnValue(of([])),
@@ -145,12 +179,6 @@ describe('DashboardComponent', () => {
     expect(mockApiService.getDashboardStream).toHaveBeenCalled();
   });
 
-  it('should call refreshAll via the refreshAll method', fakeAsync(() => {
-    component.refreshAll();
-    tick();
-    expect(mockApiService.refreshAll).toHaveBeenCalled();
-  }));
-
   it('should have initial loading state', () => {
     expect(component.isLoading()).toBe(false);
   });
@@ -159,12 +187,31 @@ describe('DashboardComponent', () => {
     expect(component.showWeather()).toBe(false);
   });
 
-  it('should have settings modal initially hidden', () => {
-    expect(component.showSettings()).toBe(false);
+  it('should have options popup initially hidden', () => {
+    expect(component.showOptions()).toBe(false);
+  });
+
+  it('should have sources popup initially hidden', () => {
+    expect(component.showSources()).toBe(false);
   });
 
   it('should have stream list popup initially hidden', () => {
     expect(component.showStreamList()).toBe(false);
+  });
+
+  it('shows section skeletons while aggregated dashboard data is still loading', async () => {
+    const pending = new Subject<any>();
+    mockApiService.getDashboardStream.mockReturnValueOnce(pending.asObservable());
+
+    const loadingFixture = TestBed.createComponent(DashboardComponent);
+    loadingFixture.detectChanges();
+
+    const compiled = loadingFixture.nativeElement as HTMLElement;
+    expect(compiled.textContent).toContain('LOADING...');
+    expect(compiled.textContent).not.toContain('NO CHANNELS CONFIGURED');
+    expect(compiled.textContent).not.toContain('NO ARTICLES');
+    expect(compiled.textContent).not.toContain('NO DATA');
+    expect(compiled.textContent).not.toContain('NO STREAMS LIVE');
   });
 
   it('keeps stream player panel mounted and iframe src stable when dashboard refresh returns the same stream id', () => {
@@ -216,5 +263,28 @@ describe('DashboardComponent', () => {
     expect(component.selectedStream()?.isLive).toBe(false);
     expect(fixture.debugElement.query(By.directive(StreamPlayerPanelComponent))).toBeTruthy();
     expect(fixture.nativeElement.textContent).toContain('OFFLINE');
+  });
+
+  it('renders the simplified dashboard chrome without the global loading banner or footer', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+
+    expect(compiled.textContent).not.toContain('INITIAL SYNC IN PROGRESS');
+    expect(compiled.textContent).not.toContain('LAST UPDATE');
+    expect(compiled.textContent).not.toContain('TWEETS:');
+    expect(compiled.textContent).not.toContain('VID:');
+    expect(compiled.textContent).not.toContain('NEWS:');
+  });
+
+  it('opens the two distinct settings popups', () => {
+    component.showOptions.set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-settings-options')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('app-settings-sources')).toBeFalsy();
+
+    component.showOptions.set(false);
+    component.showSources.set(true);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('app-settings-options')).toBeFalsy();
+    expect(fixture.nativeElement.querySelector('app-settings-sources')).toBeTruthy();
   });
 });

@@ -1,11 +1,12 @@
-import { Component, OnInit, OnDestroy, signal, inject, HostListener, ChangeDetectionStrategy, effect } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, inject, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HeaderComponent } from '../../components/header/header.component';
 import { StreamPlayerPanelComponent } from '../../components/stream/stream-player-panel.component';
 import { StreamListPopupComponent } from '../../components/stream/stream-list-popup.component';
 import { VideoPlayerPopupComponent } from '../../components/video/video-player-popup.component';
 import { VideoPlayerPanelComponent } from '../../components/video/video-player-panel.component';
-import { SettingsModalComponent } from '../../components/settings-modal/settings-modal.component';
+import { SettingsOptionsComponent } from '../../components/settings-modal/settings-options.component';
+import { SettingsSourcesComponent } from '../../components/settings-modal/settings-sources.component';
 import { WeatherPopupComponent } from '../../components/weather/weather-popup.component';
 import { MarketSectionComponent } from '../../components/sections/market-section.component';
 import { YoutubeSectionComponent } from '../../components/sections/youtube-section.component';
@@ -13,7 +14,6 @@ import { StreamsSectionComponent } from '../../components/sections/streams-secti
 import { NewsSectionComponent } from '../../components/sections/news-section.component';
 import { TrumpSectionComponent } from '../../components/sections/trump-section.component';
 import { ApiService, DashboardData } from '../../services/api.service';
-import { ToastService } from '../../services/toast.service';
 import { TwitchStream, YoutubeVideo } from '../../models';
 import { VideosStore } from '../../stores/videos.store';
 import { NewsStore } from '../../stores/news.store';
@@ -34,7 +34,8 @@ import { MarketStore } from '../../stores/market.store';
     StreamListPopupComponent,
     VideoPlayerPopupComponent,
     VideoPlayerPanelComponent,
-    SettingsModalComponent,
+    SettingsOptionsComponent,
+    SettingsSourcesComponent,
     WeatherPopupComponent,
     MarketSectionComponent,
     YoutubeSectionComponent,
@@ -45,17 +46,14 @@ import { MarketStore } from '../../stores/market.store';
   template: `
     <div class="min-h-screen bg-background">
       <app-header
-        (refresh)="refreshAll()"
-        (openSettings)="showSettings.set(true)"
+        (openOptions)="showOptions.set(true)"
+        (openSources)="showSources.set(true)"
         (openWeather)="showWeather.set(true)"
         (openStreamList)="showStreamList.set(true)"
         [weatherTemp]="dashboardData()?.weather?.days?.[0]?.temp ?? null"
         [weatherCity]="dashboardData()?.weather?.city || ''"
         [weatherCondition]="dashboardData()?.weather?.days?.[0]?.condition || ''"
         [streamCount]="streamsStore.count()"
-        [videoCount]="videosStore.count()"
-        [newsCount]="newsStore.count()"
-        [tweetCount]="marketStore.count()"
       ></app-header>
 
       @if (showWeather()) {
@@ -65,11 +63,18 @@ import { MarketStore } from '../../stores/market.store';
         ></app-weather-popup>
       }
 
-      @if (showSettings()) {
-        <app-settings-modal
-          (close)="showSettings.set(false)"
+      @if (showOptions()) {
+        <app-settings-options
+          (close)="showOptions.set(false)"
           (saved)="onSettingsSaved()"
-        ></app-settings-modal>
+        ></app-settings-options>
+      }
+
+      @if (showSources()) {
+        <app-settings-sources
+          (close)="showSources.set(false)"
+          (saved)="onSettingsSaved()"
+        ></app-settings-sources>
       }
 
       @if (selectedVideo()) {
@@ -98,65 +103,30 @@ import { MarketStore } from '../../stores/market.store';
       <div class="flex pt-12 min-h-screen">
         <main class="flex-1 min-w-0">
         <div class="p-6 max-w-screen-2xl mx-auto">
-        @if (isSyncing() || isLoading()) {
-          <div class="mb-4 px-4 py-2 neo-glass rounded flex items-center gap-3 border border-primary/30">
-            <span class="status-pulse"></span>
-            <span class="font-label-caps text-[10px] text-primary">{{ isLoading() ? loadingStatus() : 'INITIAL SYNC IN PROGRESS — DATA LOADING IN BACKGROUND...' }}</span>
-            <span class="font-label-caps text-[9px] text-text-muted ml-auto">CONNECTING TO NIGHTHUB SERVER</span>
-          </div>
-        }
 
         <!-- Top Row: Market (5-col) + YouTube (7-col) -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          @if (isLoading()) {
-            <div class="neo-glass rounded p-4 skeleton h-[380px]"></div>
-            <div class="neo-glass rounded p-4 skeleton h-[380px]"></div>
-          } @else {
-            <app-market-section></app-market-section>
-            <app-youtube-section
-              (selectVideo)="selectedVideo.set($event)"
-              (openSettings)="showSettings.set(true)"
-            ></app-youtube-section>
-          }
+          <app-market-section></app-market-section>
+          <app-youtube-section
+            (selectVideo)="selectedVideo.set($event)"
+            (openSettings)="showSources.set(true)"
+          ></app-youtube-section>
         </div>
 
-        @if (isLoading()) {
-          <div class="neo-glass rounded p-4 skeleton h-[200px] my-5"></div>
-        } @else {
-          <app-streams-section
-            (selectStream)="onStreamSelect($event)"
-            (openStreamList)="showStreamList.set(true)"
-            (openSettings)="showSettings.set(true)"
-          ></app-streams-section>
-        }
+        <app-streams-section
+          (selectStream)="onStreamSelect($event)"
+          (openStreamList)="showStreamList.set(true)"
+          (openSettings)="showSources.set(true)"
+        ></app-streams-section>
 
         <!-- Bottom Row: AI Blog (6-col) + Trump Watch (6-col) -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          @if (isLoading()) {
-            <div class="neo-glass rounded p-4 skeleton h-[500px]"></div>
-            <div class="neo-glass rounded p-4 skeleton h-[500px]"></div>
-          } @else {
-            <app-news-section
-              (feedAdded)="onFeedAdded($event)"
-            ></app-news-section>
-            <app-trump-section></app-trump-section>
-          }
+          <app-news-section
+            (feedAdded)="onFeedAdded($event)"
+          ></app-news-section>
+          <app-trump-section></app-trump-section>
         </div>
         </div>
-
-        <footer class="text-center py-4 border-t border-[#1E1E2E]">
-          <span class="font-label-caps text-[9px] text-text-muted">
-            NIGHTHUB — TERMINAL DASHBOARD
-            @if (isLive()) {
-              <span class="ml-2 text-green-400">
-                <span class="inline-block w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse mr-1 align-middle"></span>LIVE
-              </span>
-            }
-          </span>
-          @if (dashboardData()?.refreshedAt) {
-            <span class="block mt-1 font-label-caps text-[9px] text-text-muted">LAST UPDATE: {{ dashboardData()!.refreshedAt | date:'short' }}</span>
-          }
-        </footer>
         </main>
 
         @if (selectedStream()) {
@@ -171,7 +141,6 @@ import { MarketStore } from '../../stores/market.store';
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   private apiService = inject(ApiService);
-  private toastService = inject(ToastService);
 
   readonly videosStore = inject(VideosStore);
   readonly newsStore = inject(NewsStore);
@@ -181,10 +150,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   dashboardData = signal<DashboardData | null>(null);
   isLoading = signal(true);
-  isSyncing = signal(false);
   isLive = signal(false);
-  loadingStatus = signal('LOADING DASHBOARD...');
-  showSettings = signal(false);
+  showOptions = signal(false);
+  showSources = signal(false);
   showWeather = signal(false);
   showStreamList = signal(false);
   selectedStreamId = signal<string | null>(null);
@@ -192,15 +160,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedVideo = signal<YoutubeVideo | null>(null);
   panelVideo = signal<YoutubeVideo | null>(null);
 
-  constructor() {
-    effect(() => {
-      const _ = this.isLive();
-    });
-  }
-
   @HostListener('document:keydown.escape')
   onEscape() {
-    if (this.showSettings()) { this.showSettings.set(false); return; }
+    if (this.showOptions()) { this.showOptions.set(false); return; }
+    if (this.showSources()) { this.showSources.set(false); return; }
     if (this.showStreamList()) { this.showStreamList.set(false); return; }
     if (this.showWeather()) { this.showWeather.set(false); return; }
     if (this.selectedVideo()) { this.selectedVideo.set(null); return; }
@@ -288,46 +251,34 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   loadDashboard() {
-    if (!this.dashboardData()) {
-      this.isLoading.set(true);
-    }
-    this.loadingStatus.set('CONNECTING...');
-
-    this.apiService.getDashboardStream((step: string) => {
-      this.loadingStatus.set(step.toUpperCase());
-    }).subscribe({
+    this.setSectionLoading(true);
+    this.apiService.getDashboardStream(() => undefined).subscribe({
       next: (data) => {
         this.applyDashboardData(data);
-        const isEmpty = !data.videos?.length && !data.streams?.length && !data.news?.length;
-        if (isEmpty) {
-          this.isSyncing.set(true);
-          this.apiService.refreshAll().subscribe();
-        } else {
-          this.isSyncing.set(false);
-        }
         this.startStoreAutoRefreshes();
       },
       error: () => {
-        this.loadingStatus.set('LOADING DASHBOARD...');
         this.apiService.getDashboard().subscribe({
           next: (data) => {
             this.applyDashboardData(data);
-            const isEmpty = !data.videos?.length && !data.streams?.length && !data.news?.length;
-            if (isEmpty) {
-              this.isSyncing.set(true);
-              this.apiService.refreshAll().subscribe();
-            } else {
-              this.isSyncing.set(false);
-            }
             this.startStoreAutoRefreshes();
           },
           error: () => {
+            this.setSectionLoading(false);
             this.isLoading.set(false);
             this.startStoreAutoRefreshes();
           }
         });
       }
     });
+  }
+
+  private setSectionLoading(loading: boolean) {
+    this.videosStore.setLoading(loading);
+    this.newsStore.setLoading(loading);
+    this.trumpStore.setLoading(loading);
+    this.streamsStore.setLoading(loading);
+    this.marketStore.setLoading(loading);
   }
 
   private startStoreAutoRefreshes() {
@@ -370,13 +321,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
         }
       });
     }, 120000);
-  }
-
-  refreshAll() {
-    this.apiService.refreshAll().subscribe({
-      next: () => this.loadDashboard(),
-      error: (err) => console.error('Failed to refresh:', err)
-    });
   }
 
   onSettingsSaved() {

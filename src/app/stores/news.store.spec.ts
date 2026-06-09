@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { NewsStore } from './news.store';
 import { ApiService } from '../services/api.service';
 import { AiNewsItem } from '../models';
@@ -75,50 +75,45 @@ describe('NewsStore', () => {
   });
 
   describe('loadMore', () => {
-    it('should call apiService.getNews and update items on success', fakeAsync(() => {
+    it('should call apiService.getNews and update items on success', () => {
       const items = [mockNews('1', 'News 1'), mockNews('2', 'News 2')];
       mockApi.getNews.mockReturnValue(of(items));
       store.loadMore();
-      tick(50);
       expect(mockApi.getNews).toHaveBeenCalled();
       expect(store.items()).toEqual(items);
       expect(store.loading()).toBe(false);
-    }));
+    });
 
-    it('should set atEnd when response has fewer items', fakeAsync(() => {
+    it('should set atEnd when response has fewer items', () => {
       const items = [mockNews('1', 'News 1')];
       mockApi.getNews.mockReturnValue(of(items));
       store.loadMore();
-      tick(50);
       expect(store.atEnd()).toBe(true);
-    }));
+    });
 
-    it('should not set atEnd when response is full', fakeAsync(() => {
+    it('should not set atEnd when response is full', () => {
       const items = Array(20).fill(null).map((_, i) => mockNews(String(i), `News ${i}`));
       mockApi.getNews.mockReturnValue(of(items));
       store.loadMore();
-      tick(50);
       expect(store.atEnd()).toBe(false);
-    }));
+    });
 
-    it('should set error on API failure', fakeAsync(() => {
+    it('should set error on API failure', () => {
       mockApi.getNews.mockReturnValue(throwError(() => new Error('Network failure')));
       store.loadMore();
-      tick(50);
       expect(store.error()).toContain('Network failure');
       expect(store.loading()).toBe(false);
-    }));
+    });
   });
 
   describe('reload', () => {
-    it('should reset state before reloading', fakeAsync(() => {
+    it('should reset state before reloading', () => {
       const items = [mockNews('1', 'News 1')];
       mockApi.getNews.mockReturnValue(of(items));
       store.reload();
-      tick(50);
       expect(store.items()).toEqual(items);
       expect(store.loading()).toBe(false);
-    }));
+    });
   });
 
   describe('setItems', () => {

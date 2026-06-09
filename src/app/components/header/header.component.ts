@@ -40,12 +40,6 @@ import { UserPreferences } from '../../models';
             </span>
           </button>
 
-          <!-- Stats -->
-          <div class="hidden xl:flex items-center gap-3 pl-3 border-l border-[#1E1E2E]">
-            <span class="font-label-caps text-[10px] text-text-muted">VID: {{ videoCount() }}</span>
-            <span class="font-label-caps text-[10px] text-text-muted">NEWS: {{ newsCount() }}</span>
-            <span class="font-label-caps text-[10px] text-text-muted">TWEETS: {{ tweetCount() }}</span>
-          </div>
         </div>
       </div>
 
@@ -65,19 +59,19 @@ import { UserPreferences } from '../../models';
         <div class="relative hidden md:block">
           <input role="search" aria-label="Rechercher" class="bg-[#131318] border border-[#1E1E2E] rounded px-3 py-1 font-label-caps text-[10px] focus:outline-none focus:border-primary transition-all w-40 text-text-secondary placeholder-text-muted" placeholder="TERMINAL SEARCH..." type="text"/>
         </div>
-        <button (click)="openSettings.emit()"
+        <button (click)="openOptions.emit()"
                 class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
-                aria-label="Configuration">
+                aria-label="Options">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
-        <button (click)="refresh.emit()"
+        <button (click)="openSources.emit()"
                 class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
-                aria-label="Actualiser">
+                aria-label="Sources">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            <path d="M12 2a7 7 0 0 0-7 7v3a4 4 0 0 0 4 4h1v-4H9a2 2 0 0 1-2-2V9a5 5 0 0 1 10 0v1a2 2 0 0 1-2 2h-1v4h1a4 4 0 0 0 4-4V9a7 7 0 0 0-7-7z"/>
           </svg>
         </button>
       </div>
@@ -97,14 +91,9 @@ export class HeaderComponent implements OnInit, OnDestroy {
   weatherCity = input<string>('');
   weatherCondition = input<string>('');
 
-  // Stats passed from dashboard
   streamCount = input<number>(0);
-  videoCount = input<number>(0);
-  newsCount = input<number>(0);
-  tweetCount = input<number>(0);
-
-  refresh = output<void>();
-  openSettings = output<void>();
+  openOptions = output<void>();
+  openSources = output<void>();
   openWeather = output<void>();
   openStreamList = output<void>();
 

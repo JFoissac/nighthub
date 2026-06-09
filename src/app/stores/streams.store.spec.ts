@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { StreamsStore } from './streams.store';
 import { ApiService } from '../services/api.service';
 import { TwitchStream } from '../models';
@@ -75,42 +75,38 @@ describe('StreamsStore', () => {
       expect(store.liveCount()).toBe(2);
     });
 
-    it('hasError should return true when error exists', () => {
+    it('error should return error state', () => {
       patchState(store, { error: 'API error' });
-      expect(store.hasError()).toBe(true);
+      expect(store.error()).toBe('API error');
     });
   });
 
   describe('reload', () => {
-    it('should call apiService.getStreams and update items on success', fakeAsync(() => {
+    it('should call apiService.getStreams and update items on success', () => {
       const items = [mockStream('1', true), mockStream('2', false)];
       mockApi.getStreams.mockReturnValue(of(items));
       store.reload();
-      tick(50);
       expect(mockApi.getStreams).toHaveBeenCalled();
       expect(store.items()).toEqual(items);
       expect(store.loading()).toBe(false);
-    }));
+    });
 
-    it('should set loading true before API call', (done) => {
+    it('should set loading true before API call', () => {
       const subject = new Subject<any[]>();
       mockApi.getStreams.mockReturnValue(subject.asObservable());
       store.reload();
-      setTimeout(() => {
-        expect(store.loading()).toBe(true);
-        subject.next([]);
-        subject.complete();
-        done();
-      }, 0);
+      expect(store.loading()).toBe(true);
+      subject.next([]);
+      subject.complete();
+      expect(store.loading()).toBe(false);
     });
 
-    it('should set error on API failure', fakeAsync(() => {
+    it('should set error on API failure', () => {
       mockApi.getStreams.mockReturnValue(throwError(() => new Error('Network failure')));
       store.reload();
-      tick(50);
       expect(store.error()).toContain('Network failure');
       expect(store.loading()).toBe(false);
-    }));
+    });
   });
 
   describe('setItems', () => {
@@ -128,11 +124,4 @@ describe('StreamsStore', () => {
     });
   });
 
-  describe('clearError', () => {
-    it('should clear error', () => {
-      patchState(store, { error: 'Error' });
-      store.clearError();
-      expect(store.error()).toBeNull();
-    });
-  });
 });

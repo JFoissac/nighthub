@@ -55,7 +55,11 @@ export const MarketStore = signalStore(
     },
 
     setItems(items: MarketTicker[]) {
-      patchState(store, { items, lastUpdated: Date.now() });
+      patchState(store, { items, loading: false, error: null, lastUpdated: Date.now() });
+    },
+
+    setLoading(loading: boolean) {
+      patchState(store, { loading });
     },
 
     clearError() {

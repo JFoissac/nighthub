@@ -1,4 +1,4 @@
-import { TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { VideosStore } from './videos.store';
 import { ApiService } from '../services/api.service';
 import { YoutubeVideo } from '../models';
@@ -87,66 +87,59 @@ describe('VideosStore', () => {
   });
 
   describe('loadMore', () => {
-    it('should call apiService.getVideos and update items on success', fakeAsync(() => {
+    it('should call apiService.getVideos and update items on success', () => {
       const videos = [mockVideo('1', 'Video 1'), mockVideo('2', 'Video 2')];
       mockApi.getVideos.mockReturnValue(of(videos));
       store.loadMore();
-      tick(50);
       expect(mockApi.getVideos).toHaveBeenCalled();
       expect(store.items()).toEqual(videos);
       expect(store.loading()).toBe(false);
-    }));
+    });
 
-    it('should set atEnd when response has fewer items than requested', fakeAsync(() => {
+    it('should set atEnd when response has fewer items than requested', () => {
       const videos = [mockVideo('1', 'Video 1')];
       mockApi.getVideos.mockReturnValue(of(videos));
       store.loadMore();
-      tick(50);
       expect(store.atEnd()).toBe(true);
-    }));
+    });
 
-    it('should not set atEnd when response has full amount', fakeAsync(() => {
+    it('should not set atEnd when response has full amount', () => {
       const videos = Array(20).fill(null).map((_, i) => mockVideo(String(i), `Video ${i}`));
       mockApi.getVideos.mockReturnValue(of(videos));
       store.loadMore();
-      tick(50);
       expect(store.atEnd()).toBe(false);
-    }));
+    });
 
-    it('should set error on API failure', fakeAsync(() => {
+    it('should set error on API failure', () => {
       mockApi.getVideos.mockReturnValue(throwError(() => new Error('Network error')));
       store.loadMore();
-      tick(50);
       expect(store.error()).toContain('Network error');
       expect(store.loading()).toBe(false);
-    }));
+    });
 
-    it('should reset error on new loadMore call', fakeAsync(() => {
+    it('should reset error on new loadMore call', () => {
       patchState(store, { error: 'Previous error' });
       mockApi.getVideos.mockReturnValue(of([]));
       store.loadMore();
-      tick(50);
       expect(store.error()).toBeNull();
-    }));
+    });
   });
 
   describe('reload', () => {
-    it('should reset items and atEnd before reloading', fakeAsync(() => {
+    it('should reset items and atEnd before reloading', () => {
       const videos = [mockVideo('1', 'Video 1')];
       mockApi.getVideos.mockReturnValue(of(videos));
       store.reload();
-      tick(50);
       expect(store.items()).toEqual(videos);
       expect(store.loading()).toBe(false);
-    }));
+    });
 
-    it('should trigger getVideos after reset', fakeAsync(() => {
+    it('should trigger getVideos after reset', () => {
       const videos = [mockVideo('1', 'Video 1')];
       mockApi.getVideos.mockReturnValue(of(videos));
       store.reload();
-      tick(50);
       expect(mockApi.getVideos).toHaveBeenCalled();
-    }));
+    });
   });
 
   describe('setItems', () => {

@@ -24,6 +24,20 @@ import { VideosStore } from '../../stores/videos.store';
         }
       </div>
       <div class="flex-1 p-4 space-y-4 overflow-y-auto" style="max-height: 380px">
+        @if (store.isLoading() && !store.count()) {
+          <div class="space-y-3">
+            @for (placeholder of [1, 2, 3]; track placeholder) {
+              <div class="rounded-xl border border-[#1E1E2E] bg-[#131318]/50 p-3 flex gap-3 animate-pulse">
+                <div class="w-32 h-18 rounded-lg bg-[#1E1E2E]/70 shrink-0"></div>
+                <div class="flex-1 space-y-2 pt-1">
+                  <div class="h-3 w-5/6 rounded bg-[#1E1E2E]/70"></div>
+                  <div class="h-3 w-2/3 rounded bg-[#1E1E2E]/50"></div>
+                  <div class="h-2 w-24 rounded bg-[#1E1E2E]/40"></div>
+                </div>
+              </div>
+            }
+          </div>
+        }
         @for (video of store.videos(); track video.id || $index) {
           <app-video-card [video]="video" (select)="selectVideo.emit($event)"></app-video-card>
         }
@@ -38,7 +52,7 @@ import { VideosStore } from '../../stores/videos.store';
             <span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING...</span>
           </div>
         }
-        @if (!store.count()) {
+        @if (!store.isLoading() && !store.count()) {
           <div class="text-center py-6">
             <p class="font-label-caps text-[10px] text-text-muted mb-2">NO CHANNELS CONFIGURED</p>
             <button (click)="openSettings.emit()" class="font-label-caps text-[10px] text-primary underline">CONFIGURE</button>

@@ -67,8 +67,12 @@ export const VideosStore = signalStore(
       this.loadMore();
     },
 
+    setLoading(loading: boolean) {
+      patchState(store, { loading });
+    },
+
     setItems(videos: YoutubeVideo[]) {
-      patchState(store, { items: videos, atEnd: false, lastUpdated: Date.now() });
+      patchState(store, { items: videos, atEnd: false, loading: false, error: null, lastUpdated: Date.now() });
     },
 
     clearError() {

@@ -27,6 +27,20 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
         </div>
       </div>
       <div class="flex-1 overflow-y-auto" style="max-height: 500px">
+        @if (store.isLoading() && !store.count()) {
+          <div class="space-y-3 p-4">
+            @for (placeholder of [1, 2, 3]; track placeholder) {
+              <div class="rounded-xl border border-[#1E1E2E] bg-[#131318]/40 p-4 animate-pulse space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="h-3 w-28 rounded bg-[#1E1E2E]/70"></div>
+                  <div class="h-5 w-16 rounded-full bg-[#1E1E2E]/40"></div>
+                </div>
+                <div class="h-3 w-11/12 rounded bg-[#1E1E2E]/60"></div>
+                <div class="h-3 w-4/5 rounded bg-[#1E1E2E]/50"></div>
+              </div>
+            }
+          </div>
+        }
         @for (item of store.items(); track item.tweetId || item.id || $index) {
           <app-trump-card [item]="item"></app-trump-card>
         }
@@ -41,7 +55,7 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
             <span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING...</span>
           </div>
         }
-        @if (!store.count()) {
+        @if (!store.isLoading() && !store.count()) {
           <p class="font-label-caps text-[10px] text-text-muted p-4">NO DATA</p>
         }
       </div>
