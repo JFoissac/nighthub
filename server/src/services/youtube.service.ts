@@ -1,9 +1,22 @@
 import { prisma } from '../db/prisma.client';
 import { config } from '../config/env';
+import { logger } from '../utils/logger';
+import {
+  TIMEOUTS,
+  CACHE_TTL,
+  FETCH_CONCURRENCY,
+  FETCH_BATCH_DELAY_MS,
+  RESOLVE_BATCH_CONCURRENCY,
+  RESOLVE_NETWORK_FAILURE_THRESHOLD,
+  RESOLVE_NETWORK_COOLDOWN_MS,
+  RESOLVE_LOG_INTERVAL_MS,
+  HANDLE_RETRY_BACKOFF_MS,
+  YOUTUBE_VIDEO_BATCH_SIZE,
+} from '../config/constants';
 import Parser from 'rss-parser';
 
 const rssParser = new Parser({
-  timeout: 10000,
+  timeout: TIMEOUTS.RSS_PARSER,
   headers: { 'User-Agent': 'NightHub/1.0' },
   customFields: {
     item: [['media:group', 'mediaGroup']],
@@ -13,11 +26,6 @@ const rssParser = new Parser({
 const YT_RSS_BASE = 'https://www.youtube.com/feeds/videos.xml';
 const YT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const YT_CHANNEL_ID_RE = /^UC[a-zA-Z0-9_-]{22}$/;
-const HANDLE_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
-const RESOLVE_BATCH_CONCURRENCY = 8;
-const RESOLVE_NETWORK_FAILURE_THRESHOLD = 8;
-const RESOLVE_NETWORK_COOLDOWN_MS = 2 * 60_000;
-const RESOLVE_LOG_INTERVAL_MS = 30_000;
 
 type HandleRetryState = {
   attempts: number;
@@ -72,11 +80,11 @@ export class YoutubeService {
   private resolveConsecutiveNetworkFailures = 0;
   private resolveSuppressedErrors = 0;
   private resolveLastLogAt = 0;
-  private static readonly LIVE_SYNC_TTL_MS = 2 * 60 * 1000;
-  private static readonly FETCH_TTL_MS = 5 * 60 * 1000; // 5 minutes between full fetches
-  private static readonly FETCH_CONCURRENCY = 8;
-  private static readonly FETCH_BATCH_DELAY_MS = 1200;
-  private static readonly FETCH_TIMEOUT_MS = 30_000;
+  private static readonly LIVE_SYNC_TTL_MS = CACHE_TTL.LIVE_SYNC;
+  private static readonly FETCH_TTL_MS = CACHE_TTL.FETCH;
+  private static readonly FETCH_CONCURRENCY = FETCH_CONCURRENCY;
+  private static readonly FETCH_BATCH_DELAY_MS = FETCH_BATCH_DELAY_MS;
+  private static readonly FETCH_TIMEOUT_MS = TIMEOUTS.FETCH;
 
   /** Get saved channel handles from preferences */
   async getChannelHandles(): Promise<string[]> {
@@ -146,9 +154,14 @@ export class YoutubeService {
       const cooldown = this.isResolveCircuitOpen()
         ? Math.max(1, Math.ceil((this.resolveCircuitOpenUntil - now) / 1000))
         : 0;
-      console.warn(
-        `[YouTube] Handle resolve network issues (${this.resolveSuppressedErrors} errors, last=${handle}, code=${code}${cooldown ? `, cooldown=${cooldown}s` : ''})`
-      );
+      logger.warn('YouTube handle resolve network issues', {
+        errorCount: this.resolveSuppressedErrors,
+        lastHandle: handle,
+        code: this.getErrorCode(err) || 'UNKNOWN',
+        cooldown: this.isResolveCircuitOpen()
+          ? Math.max(1, Math.ceil((this.resolveCircuitOpenUntil - Date.now()) / 1000))
+          : 0,
+      });
       this.resolveSuppressedErrors = 0;
     }
   }
@@ -294,7 +307,7 @@ export class YoutubeService {
         this.lastFetchAt = Date.now();
         this.fetchInFlight = null;
       })
-      .catch(console.error);
+      .catch((e) => logger.error('FetchAndCacheLatestVideos trigger failed', e));
     setImmediate(() => this.fetchInFlight);
   }
 
@@ -308,7 +321,7 @@ export class YoutubeService {
       await this.reconcileChannelIdsFromHandles(normalized);
       this.triggerBackgroundRefresh();
     } catch (e) {
-      console.error('Save youtube channels error:', e);
+      logger.error('Save youtube channels error', e);
     }
   }
 
@@ -616,7 +629,7 @@ export class YoutubeService {
       if (this.isLikelyNetworkResolveError(e)) {
         this.recordResolveNetworkError(normalized, e);
       } else {
-        console.error(`Resolve channel ID error for ${handle}:`, e);
+        logger.error(`Resolve channel ID error for ${handle}`, e);
       }
       return null;
     }
@@ -747,7 +760,7 @@ export class YoutubeService {
         // No handles = no channels followed, clear everything
         await this.saveChannelIds([]);
         await prisma.youtubeVideo.deleteMany({});
-        console.log('[YouTube] No handles configured, cleared all cached videos');
+        logger.info('[YouTube] No handles configured, cleared all cached videos');
         return;
       }
 
@@ -758,7 +771,7 @@ export class YoutubeService {
       const stable = await this.buildStableChannelSourcesFromHandles(normalizedHandles, resolved);
       const validIds = stable.channelIds;
       if (stable.usedStoredFallback) {
-        console.warn('[YouTube] cleanOrphanChannelIds fallback: keeping stored IDs due low-confidence resolve');
+        logger.warn('[YouTube] cleanOrphanChannelIds fallback: keeping stored IDs due low-confidence resolve');
       }
 
       // Get stored IDs
@@ -768,7 +781,7 @@ export class YoutubeService {
       const orphanIds = storedIds.filter(id => !validIds.includes(id));
 
       if (orphanIds.length > 0 && validIds.length > 0) {
-        console.log(`[YouTube] Removing ${orphanIds.length} orphan channel IDs:`, orphanIds);
+        logger.info('[YouTube] Removing orphan channel IDs', { count: orphanIds.length, ids: orphanIds });
 
         // Delete cached videos from orphan channels
         await prisma.youtubeVideo.deleteMany({
@@ -779,7 +792,7 @@ export class YoutubeService {
         await this.saveChannelIds(validIds);
       }
     } catch (e) {
-      console.error('[YouTube] Clean orphan channel IDs error:', e);
+      logger.error('[YouTube] Clean orphan channel IDs error', e);
     }
   }
 
@@ -794,7 +807,7 @@ export class YoutubeService {
         await prisma.userPreference.create({ data: { youtubeChannelIds: value } });
       }
     } catch (e) {
-      console.error('Save youtube channel IDs error:', e);
+      logger.error('Save youtube channel IDs error', e);
     }
   }
 
@@ -816,7 +829,7 @@ export class YoutubeService {
           this.lastFetchAt = Date.now();
           this.fetchInFlight = null;
         })
-        .catch(console.error);
+.catch((e) => logger.error('Save youtube channels error', e));
       setImmediate(() => this.fetchInFlight);
     }
 
@@ -828,11 +841,11 @@ export class YoutubeService {
    * Use sparingly - this is slow.
    */
   async preWarmCache(): Promise<void> {
-    console.log('[YouTube] Pre-warming cache...');
+    logger.info('[YouTube] Pre-warming cache...');
     const start = Date.now();
     await this.fetchAndCacheLatestVideos();
     this.lastFetchAt = Date.now();
-    console.log(`[YouTube] Cache warmed in ${Date.now() - start}ms`);
+    logger.info('[YouTube] Cache warmed', { durationMs: Date.now() - start });
   }
 
   /**
@@ -871,16 +884,18 @@ export class YoutubeService {
 
     if (sources.length === 0) return;
 
-    console.log(
-      `[YouTube] Fetching ${sources.length} channels with concurrency ${YoutubeService.FETCH_CONCURRENCY} (timeout=${YoutubeService.FETCH_TIMEOUT_MS}ms)...`
-    );
+    logger.info('[YouTube] Fetching channels', {
+      count: sources.length,
+      concurrency: YoutubeService.FETCH_CONCURRENCY,
+      timeoutMs: YoutubeService.FETCH_TIMEOUT_MS,
+    });
 
     const allVideos: any[] = [];
 
     // Process in parallel batches
     for (let i = 0; i < sources.length; i += YoutubeService.FETCH_CONCURRENCY) {
       if (Date.now() >= deadlineAt) {
-        console.warn('[YouTube] Fetch timeout reached before finishing all batches');
+        logger.warn('[YouTube] Fetch timeout reached before finishing all batches');
         break;
       }
 
@@ -918,7 +933,7 @@ export class YoutubeService {
 
     if (filtered.length > 0) {
       await this.cacheVideos(filtered.slice(0, 50));
-      console.log(`[YouTube] Cached ${Math.min(filtered.length, 50)} videos`);
+      logger.info('[YouTube] Cached videos', { count: Math.min(filtered.length, 50) });
     }
   }
 
@@ -952,7 +967,13 @@ export class YoutubeService {
       const channelName = feed.title || channelHandle || channelId;
       const items = feed.items || [];
       if (items.length > 0) {
-        console.log(`[YouTube] RSS ${channelName} (${channelId}): ${items.length} items, first: "${items[0].title?.substring(0,40)}" pubDate=${items[0].pubDate || items[0].isoDate}`);
+        logger.debug('[YouTube] RSS fetch', {
+        channelName,
+        channelId,
+        itemCount: items.length,
+        firstTitle: items[0].title?.substring(0, 40),
+        pubDate: items[0].pubDate || items[0].isoDate,
+      });
       }
 
       const mapped = items
@@ -986,7 +1007,7 @@ export class YoutubeService {
       await this.enrichLiveStatus(mapped);
       return mapped;
     } catch (e) {
-      console.error(`YouTube RSS error for ${channelHandle || channelId}:`, e);
+      logger.error(`YouTube RSS error for ${channelHandle || channelId}`, e);
       return [];
     }
   }
@@ -1029,7 +1050,7 @@ export class YoutubeService {
         }
         const jitter = Math.round(Math.random() * 500);
         const wait = delays[attempt] + jitter;
-        console.warn(`[YouTube] RSS parse attempt ${attempt + 1} failed for ${url}, retrying in ${wait}ms...`);
+        logger.warn(`[YouTube] RSS parse attempt ${attempt + 1} failed for ${url}, retrying`, { waitMs: wait });
         await new Promise(r => setTimeout(r, wait));
       }
     }
@@ -1074,7 +1095,7 @@ export class YoutubeService {
           durations.set(item.id, item.contentDetails?.duration || '');
         }
       } catch (e) {
-        console.error('YouTube Data API v3 duration fetch error:', e);
+        logger.error('YouTube Data API v3 duration fetch error', e);
       }
     }
     return durations;
@@ -1105,7 +1126,7 @@ export class YoutubeService {
     }
 
     if (durations.size > 0) {
-      console.log(`[YouTube] Piped fallback resolved ${durations.size}/${videoIds.length} durations`);
+      logger.info('[YouTube] Piped fallback resolved durations', { resolved: durations.size, total: videoIds.length });
     }
     return durations;
   }
@@ -1219,7 +1240,7 @@ export class YoutubeService {
         });
       }
     } catch (e) {
-      console.error('Cache videos error:', e);
+      logger.error('Cache videos error', e);
     }
   }
 
@@ -1237,20 +1258,39 @@ export class YoutubeService {
           isLive: false,
           channelId: { in: channelIds },
         },
+        select: {
+          youtubeId: true,
+          title: true,
+          thumbnailUrl: true,
+          channelName: true,
+          channelAvatar: true,
+          channelId: true,
+          channelHandle: true,
+          duration: true,
+          views: true,
+          url: true,
+          isNew: true,
+          isLive: true,
+          publishedAt: true,
+        },
         take: limit,
         orderBy: { publishedAt: 'desc' },
       });
-      const sanitized = videos.map((video: any) => ({
+      const sanitized = videos.map((video) => ({
         ...video,
         channelHandle: this.sanitizeHandle(video.channelHandle),
       }));
-      console.log(`[YouTube] getCachedVideos: ${sanitized.length} videos (limit=${limit}, window=7d, channelIds=${channelIds.length})`);
+      logger.debug('getCachedVideos', { count: sanitized.length, limit, channelIds: channelIds.length });
       if (sanitized.length > 0) {
-        console.log(`[YouTube] getCachedVideos sample: [0] ${sanitized[0].channelName} | "${sanitized[0].title?.substring(0, 40)}" | publishedAt=${sanitized[0].publishedAt}`);
+        logger.debug('getCachedVideos sample', {
+          channelName: sanitized[0].channelName,
+          title: sanitized[0].title?.substring(0, 40),
+          publishedAt: sanitized[0].publishedAt,
+        });
       }
       return sanitized;
     } catch (e) {
-      console.error('[YouTube] getCachedVideos error:', e);
+      logger.error('getCachedVideos error', e);
       return [];
     }
   }
@@ -1321,7 +1361,7 @@ export class YoutubeService {
 
     if (liveVideos.length === 0) return;
 
-    console.log(`[YouTube] Verifying ${liveVideos.length} live streams...`);
+    logger.info('[YouTube] Verifying live streams', { count: liveVideos.length });
 
     for (const video of liveVideos) {
       try {
@@ -1332,11 +1372,11 @@ export class YoutubeService {
             where: { id: video.id },
             data: { isLive: false },
           });
-          console.log(`[YouTube] Live ended: ${video.youtubeId}`);
+          logger.info('[YouTube] Live ended', { youtubeId: video.youtubeId });
         }
       } catch (e) {
         // On error, leave isLive unchanged (conservative)
-        console.warn(`[YouTube] Failed to verify live status for ${video.youtubeId}:`, e);
+        logger.warn(`[YouTube] Failed to verify live status for ${video.youtubeId}`, { error: e });
       }
     }
   }

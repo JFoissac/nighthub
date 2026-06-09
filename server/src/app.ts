@@ -1,7 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import { config } from './config/env';
 import { errorHandler } from './middleware/error.middleware';
+import { logger } from './utils/logger';
 import healthRoutes from './routes/health.routes';
 import authRoutes from './routes/auth.routes';
 import apiRoutes from './routes/api.routes';
@@ -11,48 +14,128 @@ import { youtubeService } from './services/youtube.service';
 
 const app = express();
 
-app.use(cors({
-  origin: ['http://localhost:4200', 'http://127.0.0.1:4200', 'http://localhost:3000'],
-  credentials: true,
-}));
-app.use(express.json());
+// Compression middleware
+app.use(compression());
 
+// CORS configuration with environment-based origins
+app.use(cors({
+  origin: config.cors.origins,
+  credentials: config.cors.credentials,
+  methods: config.cors.methods,
+  allowedHeaders: config.cors.allowedHeaders,
+}));
+
+app.use(express.json({ limit: '1mb' }));
+
+// Rate limiting - general
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  handler: (req, res, next, options) => {
+    logger.warn('Rate limit exceeded', { ip: req.ip, path: req.path });
+    res.status(429).json(options.message);
+  },
+});
+
+// Rate limiting - strict (for expensive operations)
+const strictLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit exceeded for this operation.' },
+  handler: (req, res, next, options) => {
+    logger.warn('Strict rate limit exceeded', { ip: req.ip, path: req.path });
+    res.status(429).json(options.message);
+  },
+});
+
+// Apply general rate limiter to API routes
+app.use('/api', generalLimiter);
+
+// Health routes (no rate limiting needed)
 app.use('/health', healthRoutes);
-app.use('/api/auth', authRoutes);
+
+// Auth routes (apply strict limiter due to OAuth operations)
+app.use('/api/auth', strictLimiter, authRoutes);
+
+// API routes
 app.use('/api', apiRoutes);
 
+// Global error handler (must be last)
 app.use(errorHandler);
+
+// Graceful shutdown handler
+let isShuttingDown = false;
+const connections = new Set<import('net').Socket>();
+
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  logger.info(`Received ${signal}, starting graceful shutdown...`);
+
+  // Stop accepting new connections
+  connections.forEach((socket) => {
+    socket.destroy();
+  });
+
+  // Stop aggregator cron jobs
+  aggregatorService.stop();
+
+  // Close database connection
+  await prisma.$disconnect();
+
+  logger.info('Graceful shutdown complete');
+  process.exit(0);
+}
 
 async function startServer() {
   try {
     await prisma.$connect();
-    console.log('[Database] Connected to SQLite');
+    logger.info('Database connected', { url: config.database.url });
 
-    youtubeService.cleanOrphanChannelIds().catch(console.error);
+    youtubeService.cleanOrphanChannelIds().catch((e) => logger.error('Clean orphan channel IDs failed', e));
 
     // Fire-and-forget cache warm-up (runs in background)
-    youtubeService.preWarmCache().catch(e => console.warn('[YouTube] Pre-warm failed:', e));
+    youtubeService.preWarmCache().catch((e) => logger.warn('Pre-warm failed', { error: e }));
 
     aggregatorService.refreshAll();
-    console.log('[Aggregator] Initial data fetch started');
+    logger.info('Aggregator initial data fetch started');
 
-    app.listen(config.port, () => {
-      console.log(`[Server] Running on http://localhost:${config.port}`);
-      console.log(`[Environment] ${config.nodeEnv}`);
+    const server = app.listen(config.port, () => {
+      logger.info('Server started', {
+        port: config.port,
+        env: config.nodeEnv,
+        corsOrigins: config.cors.origins,
+      });
       aggregatorService.start();
-      console.log('[Aggregator] Cron jobs started');
+      logger.info('Aggregator cron jobs started');
     });
+
+    // Track connections for graceful shutdown
+    server.on('connection', (socket) => {
+      connections.add(socket);
+      socket.on('close', () => {
+        connections.delete(socket);
+      });
+    });
+
+    // Apply strict rate limiter to expensive endpoints
+    app.post('/api/refresh/all', strictLimiter);
+    app.post('/api/refresh/twitch', strictLimiter);
+    app.post('/api/auth/logout', strictLimiter);
+
   } catch (error) {
-    console.error('[Server] Failed to start:', error);
+    logger.error('Server failed to start', error);
     process.exit(1);
   }
 }
 
-process.on('SIGINT', async () => {
-  console.log('[Server] Shutting down...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 startServer();
 

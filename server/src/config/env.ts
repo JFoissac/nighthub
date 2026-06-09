@@ -2,9 +2,19 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const rawCorsOrigins = process.env.CORS_ORIGINS || 'http://localhost:4200,http://127.0.0.1:4200';
+const allowedOrigins = rawCorsOrigins.split(',').map((o) => o.trim()).filter(Boolean);
+
 export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
+
+  cors: {
+    origins: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  },
 
   youtube: {
     clientId: process.env.YOUTUBE_CLIENT_ID || '',
@@ -33,7 +43,27 @@ export const config = {
     instanceUrl: process.env.PIPED_INSTANCE_URL || '',
   },
 
+  coingecko: {
+    apiKey: process.env.COINGECKO_API_KEY || '',
+  },
+
+  alphaVantage: {
+    apiKey: process.env.ALPHA_VANTAGE_API_KEY || '',
+  },
+
+  newsApi: {
+    apiKey: process.env.NEWS_API_KEY || '',
+  },
+
   database: {
     url: process.env.DATABASE_URL || 'file:./dev.db',
   },
 };
+
+export function isProduction(): boolean {
+  return config.nodeEnv === 'production';
+}
+
+export function isDevelopment(): boolean {
+  return config.nodeEnv === 'development';
+}

@@ -47,7 +47,9 @@ Au démarrage du serveur, `preWarmCache()` est appelé en arrière-plan pour pr�
 
 ```typescript
 // server/src/app.ts
-youtubeService.preWarmCache().catch(e => console.warn('[YouTube] Pre-warm failed:', e));
+youtubeService
+  .preWarmCache()
+  .catch((e) => console.warn('[YouTube] Pre-warm failed:', e));
 ```
 
 ### 3. fetchAndCacheLatestVideos() utilise uniquement les channelIds

@@ -2,9 +2,11 @@ import Parser from 'rss-parser';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { prisma } from '../db/prisma.client';
+import { logger } from '../utils/logger';
+import { TIMEOUTS } from '../config/constants';
 
 const rssParser = new Parser({
-  timeout: 10000,
+  timeout: TIMEOUTS.RSS_PARSER,
   headers: { 'User-Agent': 'NightHub/1.0 RSS Reader' },
 });
 
@@ -95,7 +97,7 @@ export class NewsService {
       }
       return all;
     } catch (e) {
-      console.error('Custom RSS fetch error:', e);
+      logger.error('Custom RSS fetch error', e);
       return [];
     }
   }
@@ -114,9 +116,15 @@ export class NewsService {
     }
 
     const uniqueItems = Array.from(seenUrls.values());
-    console.log(`[News] Custom RSS ${domain}: ${items.length} items -> ${uniqueItems.length} unique`);
+    logger.info('[News] Custom RSS fetch', { domain, totalItems: items.length, uniqueItems: uniqueItems.length });
     uniqueItems.slice(0, 2).forEach((item: any, i: number) => {
-      console.log(`  [${domain} ${i}] "${item.title?.substring(0,50)}" pubDate="${item.pubDate}" isoDate="${item.isoDate}"`);
+      logger.debug('[News] Custom RSS item', {
+        domain,
+        index: i,
+        title: item.title?.substring(0, 50),
+        pubDate: item.pubDate,
+        isoDate: item.isoDate,
+      });
     });
     return uniqueItems.slice(0, 8).map((item: any) => {
       const pubDate = this.normalizeDate(item.pubDate || item.isoDate);
@@ -148,9 +156,14 @@ export class NewsService {
     }
 
     const uniqueItems = Array.from(seenUrls.values());
-    console.log(`[News] OpenAI RSS: ${items.length} items -> ${uniqueItems.length} unique`);
+    logger.info('[News] OpenAI RSS fetch', { totalItems: items.length, uniqueItems: uniqueItems.length });
     uniqueItems.slice(0, 3).forEach((item: any, i: number) => {
-      console.log(`  [OpenAI ${i}] title="${item.title?.substring(0,50)}" pubDate="${item.pubDate}" isoDate="${item.isoDate}"`);
+      logger.debug('[News] OpenAI item', {
+        index: i,
+        title: item.title?.substring(0, 50),
+        pubDate: item.pubDate,
+        isoDate: item.isoDate,
+      });
     });
     return uniqueItems.slice(0, 10).map((item: any) => {
       const pubDate = this.normalizeDate(item.pubDate || item.isoDate);
@@ -166,7 +179,7 @@ export class NewsService {
   }
 
   private async scrapeAnthropic(): Promise<any[]> {
-    console.log('[News] Fetching Anthropic news...');
+    logger.info('[News] Fetching Anthropic news...');
     const res = await fetch('https://www.anthropic.com/news', { headers: FETCH_HEADERS });
     if (!res.ok) throw new Error(`Anthropic HTTP ${res.status}`);
     const html = await res.text();
@@ -209,7 +222,7 @@ export class NewsService {
       }
     }
 
-    console.log(`[News] Anthropic found ${articles.length} article paths, fetching individual pages for dates...`);
+    logger.info('[News] Anthropic found article paths', { count: articles.length });
 
     const articlesWithDates = await Promise.allSettled(
       articles.slice(0, 10).map(async (article) => {
@@ -268,9 +281,13 @@ export class NewsService {
       .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
       .map(r => r.value);
 
-    console.log(`[News] Anthropic scraped: ${result.length} articles with dates`);
+    logger.info('[News] Anthropic scraped', { articleCount: result.length });
     result.slice(0, 3).forEach((a, i) => {
-      console.log(`  [Anthropic ${i}] "${a.title?.substring(0,50)}" pubDate="${a.pubDate}"`);
+      logger.debug('[News] Anthropic article', {
+        index: i,
+        title: a.title?.substring(0, 50),
+        pubDate: a.pubDate,
+      });
     });
     return result;
   }
@@ -324,10 +341,10 @@ export class NewsService {
       });
     }
 
-    console.log(`[News] Kimi scraped from index: ${articles.length} articles`);
+    logger.info('[News] Kimi scraped from index', { count: articles.length });
 
     if (articles.length === 0) {
-      console.log('[News] Kimi: No articles found on index page, trying fallback...');
+      logger.warn('[News] Kimi: No articles found on index page, trying fallback...');
       const knownArticles = [
         { slug: 'kimi-k2-6', title: 'Kimi K2.6', date: '2026-04-20' },
         { slug: 'agent-swarm', title: 'Agent Swarm', date: '2026-02-09' },
@@ -346,9 +363,13 @@ export class NewsService {
       }));
     }
 
-    console.log(`[News] Kimi scraped: ${articles.length} articles`);
+    logger.info('[News] Kimi scraped', { count: articles.length });
     articles.slice(0, 3).forEach((a, i) => {
-      console.log(`  [Kimi ${i}] "${a.title?.substring(0,50)}" pubDate="${a.pubDate}"`);
+      logger.debug('[News] Kimi article', {
+        index: i,
+        title: a.title?.substring(0, 50),
+        pubDate: a.pubDate,
+      });
     });
     return articles.slice(0, 10);
   }
@@ -412,7 +433,7 @@ private async cacheNews(items: any[]): Promise<void> {
           });
         }
       } catch (e) {
-        console.error('Cache news item error:', e);
+        logger.error('Cache news item error', e);
       }
     }
   }
@@ -512,7 +533,7 @@ private async cacheNews(items: any[]): Promise<void> {
       const code = (error as Error)?.name === 'AbortError'
         ? 'TIMEOUT'
         : (error as Error)?.message || 'UNKNOWN';
-      console.warn('[News] extractArticleText failed:', code, parsedUrl.toString());
+      logger.warn('[News] extractArticleText failed', { code, url: parsedUrl.toString() });
       throw new Error(ARTICLE_EXTRACTION_FAILED);
     }
   }

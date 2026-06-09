@@ -10,6 +10,7 @@
 **Status**: Already partially addressed
 
 Le dashboard utilise déjà un pattern SSE avec `getDashboardStream()` qui stream les données progressivement. On observe:
+
 - `loadingStatus` qui change: 'CONNECTING...' → messages de progression
 - `isSyncing` affiche un message "INITIAL SYNC IN PROGRESS" avec spin
 - Les données arrivent au fur et à mesure
@@ -18,11 +19,11 @@ Le dashboard utilise déjà un pattern SSE avec `getDashboardStream()` qui strea
 
 **Approches possibles**:
 
-| Approche | Pros | Cons |
-|----------|------|------|
-| Lazy-load section YouTube après paint | UI immédiate, percepçu plus rapide | Flash de contenu qui apparaît |
-| Skeleton placeholders par section | Feedback visuel constant | Plus de code UI |
-| Parallèle: dashboard sans YouTube, puis merge | Simple à implémenter | Peut créer des re-renders |
+| Approche                                      | Pros                               | Cons                          |
+| --------------------------------------------- | ---------------------------------- | ----------------------------- |
+| Lazy-load section YouTube après paint         | UI immédiate, percepçu plus rapide | Flash de contenu qui apparaît |
+| Skeleton placeholders par section             | Feedback visuel constant           | Plus de code UI               |
+| Parallèle: dashboard sans YouTube, puis merge | Simple à implémenter               | Peut créer des re-renders     |
 
 **Recommandation**: Skeleton placeholders + streaming optimiste. Chaque section (Twitter, YouTube, Streams, News, Trump) affiche un skeleton state dès le mount, puis remplit quand les données arrivent. C'est déjà le pattern naturel du SSE.
 
@@ -37,6 +38,7 @@ Le `YoutubeService` actuel (`src/app/services/youtube.service.ts`) utilise des d
 **Problème**: Currently fetches all videos without time filtering, causing unnecessary bandwidth and processing.
 
 **Solution required**:
+
 1. Add `publishedAfter` parameter to YouTube API calls
 2. Calculate `1 week ago` from current date
 3. Cache aggressively since data is historical (won't change)
@@ -56,11 +58,13 @@ const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 **Status**: Partiellement implémenté
 
 Le header a déjà un toggle OLED (`isOled` signal) qui ajoute `theme-oled` class au body. Mais c'est:
+
 - Uniquement OLED (noir profond)
 - Pas de mode "jour" (light theme)
 - Pas de mode "neon" (couleurs cyberpunk brighter)
 
 **Architecture actuelle**:
+
 ```typescript
 // header.component.ts:89
 isOled = signal(false);
@@ -70,6 +74,7 @@ document.body.classList.add('theme-oled');
 ```
 
 **Tailwind config** définit uniquement des couleurs dark:
+
 ```js
 background: '#0A0A0F',
 primary: '#c0c1ff',
@@ -78,21 +83,21 @@ secondary: '#5de6ff',
 
 **Approches**:
 
-| Mode | Implementation |
-|------|----------------|
+| Mode       | Implementation                                                            |
+| ---------- | ------------------------------------------------------------------------- |
 | Light mode | Ajouter `theme-light` avec couleurs light dans Tailwind, inverser bg/text |
-| OLED mode | Existing `theme-oled` with pure black |
-| Neon mode | Augmenter saturation primary/secondary, ajouter glow effects |
+| OLED mode  | Existing `theme-oled` with pure black                                     |
+| Neon mode  | Augmenter saturation primary/secondary, ajouter glow effects              |
 
 **Recommandation**: Theme system avec CSS custom properties + Tailwind arbitrary values. Single `data-theme` attribute sur `<html>` qui contrôle tout.
 
 ```css
-[data-theme="light"] {
+[data-theme='light'] {
   --bg: #f5f5f7;
   --text: #1d1d1f;
   --primary: #5e5ce6;
 }
-[data-theme="neon"] {
+[data-theme='neon'] {
   --bg: #0a0a0f;
   --primary: #00ff88;
   --glow: 0 0 20px var(--primary);
@@ -106,17 +111,18 @@ secondary: '#5de6ff',
 **Status**: UI stub exists
 
 Le header a un input placeholder "TERMINAL SEARCH..." mais:
+
 - Pas de logique de recherche
 - Pas d'activation (Enter, focus)
 - Pas de résultats affichés
 
 **Scope creep alert**: "Terminal search" peut signifier deux choses différentes:
 
-| Interprétation | Description |
-|----------------|-------------|
-| In-app search | Rechercher dans les données dashboard (videos, streams, news, tweets) |
-| Out-app search | Recherche web / navigation vers ressources externes |
-| Both | Combination |
+| Interprétation | Description                                                           |
+| -------------- | --------------------------------------------------------------------- |
+| In-app search  | Rechercher dans les données dashboard (videos, streams, news, tweets) |
+| Out-app search | Recherche web / navigation vers ressources externes                   |
+| Both           | Combination                                                           |
 
 **Approches**:
 
@@ -135,15 +141,18 @@ Le header a un input placeholder "TERMINAL SEARCH..." mais:
 **Status**: Mock data
 
 Le `TrumpStore` et `TrumpSectionComponent` existent mais utilisent des mock data. Il y a déjà:
+
 - `server/src/services/trump.service.ts` - probablement à améliorer
 - `src/app/services/trump.service.ts` - service Angular
 
 **Sources potentielles**:
+
 - Truth Social API (officielle, mais rate-limited)
 - RSS feeds de sites d'actualités (CNN, Fox, etc)
 - Web scraping pour Truth Social (fragile)
 
 **Problème connu**: Truth Social n'a pas de RSS public. Les approaches:
+
 1. CNN/Fox RSS - simple mais pas "Trump-specific"
 2. Dedicated Trump news aggregator APIs
 3. Web scraping (anti-pattern, fragile)
@@ -152,7 +161,31 @@ Le `TrumpStore` et `TrumpSectionComponent` existent mais utilisent des mock data
 
 **Note**: Il existe `src/app/components/trump/trump-card.component.ts` - à vérifier pour l'implémentation actuelle.
 
----
+Oui — il existe déjà des miroirs et archives publics des posts de Trump, surtout pour Truth Social, avec parfois un flux RSS. Le plus cité aujourd’hui est trumpstruth.org, qui propose un flux RSS via /feed et sert de miroir pour les posts de Trump sur Truth Social.
+
+Options utiles
+trumpstruth.org : miroir public + RSS, pratique pour suivre les posts sans compte.
+
+TrumpDailyPosts sur X : compte de reprise/commentaire des posts Truth Social, mais ce n’est pas une archive exhaustive ni un RSS.
+
+Archives GitHub / scrapers : certains dépôts automatisent la collecte des posts Truth Social de Trump et les exportent en JSON/CSV.
+
+Pour du RSS
+Le flux RSS le plus clair trouvé est :
+
+https://trumpstruth.org/feed
+
+Pour du scraping
+Truth Social est basé sur Mastodon, donc des approches de scraping/API existent, et plusieurs outils non officiels exploitent cette base pour récupérer les posts du compte de Trump. En pratique, les solutions les plus simples pour toi sont soit le RSS de trumpstruth.org, soit un repo/script qui archive automatiquement les posts.
+
+Limites à garder en tête
+Les miroirs peuvent être incomplets ou filtrés.
+
+Les scrapers non officiels peuvent casser si Truth Social change son site ou ses protections.
+
+Un flux RSS est généralement plus stable qu’un scraping maison pour un usage perso.
+
+## Je peux aussi te faire un mini comparatif des meilleures options selon ton besoin: lecture simple, RSS dans un lecteur, ou scraping Python/Node.
 
 ## 6. Fusion avec crypto dashboard
 
@@ -161,16 +194,19 @@ Le `TrumpStore` et `TrumpSectionComponent` existent mais utilisent des mock data
 Aucun code crypto dashboard n'existe actuellement. C'est un nouveau sous-projet.
 
 **Questions critiques**:
+
 1. Fusion physique: Merger dans le même repo/app?
 2. Ou fusion logique: Dashboards liés mais séparés?
 3. Quel crypto data? Prices? News? Portfolio?
 
 **Si fusion physique**:
+
 - Nx monorepo - les deux apps existent déjà probablement
 - Partager stores/services communs (auth, user prefs)
 - Unified header/navigation
 
 **Si fusion logique**:
+
 - Linking entre dashboards
 - Shared authentication (single sign-on)
 
@@ -185,12 +221,14 @@ Aucun code crypto dashboard n'existe actuellement. C'est un nouveau sous-projet.
 Demande d'ajouter des capacités IA via Perplexity API.
 
 **Use cases possibles**:
+
 - Résumé automatique de news
 - Recherche sémantique
 - Suggestions de contenu
 - Analyse de sentiment sur Trump/news
 
 **Architecture suggérée**:
+
 ```
 Frontend                    Server
    |                           |
@@ -203,6 +241,7 @@ Frontend                    Server
 **Pourquoi server-side**: API keys doivent rester cachées, coûts à contrôler.
 
 **Points à décider**:
+
 1. Quel use case priorité?
 2. Streaming responses (SSE) ou batch?
 3. Cache des réponses?
@@ -211,17 +250,18 @@ Frontend                    Server
 
 ## Priorisation suggérée
 
-| # | Item | Complexité | Valeur | Quick Win? |
-|---|------|------------|--------|------------|
-| 1 | YouTube lazy load | Moyenne | Haute | Non |
-| 2 | YouTube week filter | Basse | Moyenne | Oui |
-| 3 | Theme system | Moyenne | Haute | Non |
-| 4 | Terminal search | Moyenne | Haute | Non |
-| 5 | Trump real data | Haute | Haute | Non |
-| 6 | Crypto fusion | ??? | ??? | Non |
-| 7 | Perplexity wrapper | Moyenne | Haute | Non |
+| #   | Item                | Complexité | Valeur  | Quick Win? |
+| --- | ------------------- | ---------- | ------- | ---------- |
+| 1   | YouTube lazy load   | Moyenne    | Haute   | Non        |
+| 2   | YouTube week filter | Basse      | Moyenne | Oui        |
+| 3   | Theme system        | Moyenne    | Haute   | Non        |
+| 4   | Terminal search     | Moyenne    | Haute   | Non        |
+| 5   | Trump real data     | Haute      | Haute   | Non        |
+| 6   | Crypto fusion       | ???        | ???     | Non        |
+| 7   | Perplexity wrapper  | Moyenne    | Haute   | Non        |
 
 **Quick wins** (1-2h chacun):
+
 - YouTube week filter (#2)
 - Terminal search skeleton (#4) - juste la structure, pas la logique
 

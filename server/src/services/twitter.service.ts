@@ -1,4 +1,5 @@
 import { prisma } from '../db/prisma.client';
+import { logger } from '../utils/logger';
 import Parser from 'rss-parser';
 
 const rssParser = new Parser({
@@ -51,7 +52,7 @@ export class TwitterService {
           }));
         }
       } catch (e) {
-        console.error(`Nitter ${instance} error for ${username}:`, (e as Error).message);
+        logger.warn(`Nitter ${instance} error for ${username}`, { message: (e as Error).message });
       }
     }
     return [];
@@ -129,7 +130,7 @@ export class TwitterService {
         });
       }
     } catch (e) {
-      console.error('Cache tweets error:', e);
+      logger.error('Cache tweets error', e);
     }
   }
 

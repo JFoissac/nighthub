@@ -1,9 +1,11 @@
 import { prisma } from '../db/prisma.client';
+import { logger } from '../utils/logger';
+import { TIMEOUTS, CACHE_TTL } from '../config/constants';
 
 const TWITCH_GQL = 'https://gql.twitch.tv/gql';
 // Twitch's own web client-id (public, used by twitch.tv website)
 const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
-const TWITCH_GQL_TIMEOUT_MS = 10_000;
+const TWITCH_GQL_TIMEOUT_MS = TIMEOUTS.GQL;
 
 const GQL_HEADERS = {
   'Client-Id': TWITCH_WEB_CLIENT_ID,
@@ -33,8 +35,8 @@ export class TwitchService {
   private lastLightRefreshAt = 0;
   private lightRefreshInFlight: Promise<void> | null = null;
   private authoritativeRefreshInFlight: Promise<{ changed: boolean; newLives: number; endedLives: number; totalLive: number }> | null = null;
-  private static readonly LIGHT_REFRESH_TTL_MS = 5 * 60 * 1000;
-  private static readonly LIVE_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+  private static readonly LIGHT_REFRESH_TTL_MS = CACHE_TTL.LIGHT_REFRESH;
+  private static readonly LIVE_CACHE_MAX_AGE_MS = CACHE_TTL.LIVE_CACHE_MAX_AGE;
 
   private extractChannelLoginFromUrl(url: string): string {
     const match = url.match(/twitch\.tv\/([^/?#]+)/i);
@@ -84,7 +86,7 @@ export class TwitchService {
         await prisma.userPreference.create({ data: { twitchFollows: value } });
       }
     } catch (e) {
-      console.error('Save twitch follows error:', e);
+      logger.error('Save twitch follows error', e);
     }
   }
 
@@ -115,7 +117,7 @@ export class TwitchService {
         streamTitle: user.stream?.title || '',
       }];
     } catch (e) {
-      console.error('getFollowsByProfile error:', e);
+      logger.error('getFollowsByProfile error', e);
       return [];
     }
   }
@@ -179,11 +181,16 @@ export class TwitchService {
 
     try {
       const users = await this.fetchUsersByLogins(channels);
-      console.log(`[Twitch] GQL response: ${users.length} users total`);
+      logger.info('[Twitch] GQL response', { userCount: users.length });
       const liveUsers = users.filter(u => u.stream !== null);
-      console.log(`[Twitch] Live: ${liveUsers.length}/${users.length}`);
+      logger.info('[Twitch] Live status', { live: liveUsers.length, total: users.length });
       liveUsers.forEach((u, i) => {
-        console.log(`  [Twitch live ${i}] ${u.displayName} — "${u.stream.title?.substring(0,50)}" — ${u.stream.viewersCount} viewers — game: ${u.stream.game?.name}`);
+        logger.debug('[Twitch] Live stream details', {
+        displayName: u.displayName,
+        title: u.stream.title?.substring(0, 50),
+        viewers: u.stream.viewersCount,
+        game: u.stream.game?.name,
+      });
       });
       const liveStreams = liveUsers
         .map(u => ({
@@ -208,7 +215,7 @@ export class TwitchService {
 
       return liveStreams;
     } catch (e) {
-      console.error('getFollowedStreams GQL error:', e);
+      logger.error('getFollowedStreams GQL error', e);
       return this.getCachedStreams();
     }
   }
@@ -307,7 +314,7 @@ export class TwitchService {
     })()
       .catch((e) => {
         // Keep callers resilient even if refresh fails.
-        console.error('[Twitch] refreshLiveCacheLight error:', e);
+        logger.error('[Twitch] refreshLiveCacheLight error', e);
         return { changed: false, newLives: 0, endedLives: 0, totalLive: 0 };
       })
       .finally(() => {
@@ -348,7 +355,7 @@ export class TwitchService {
         url: `https://twitch.tv/${u.login}`,
       }));
     } catch (e) {
-      console.error('getAllChannels error:', e);
+      logger.error('getAllChannels error', e);
       return [];
     }
   }
@@ -384,7 +391,7 @@ export class TwitchService {
         });
       }
     } catch (e) {
-      console.error('Cache streams error:', e);
+      logger.error('Cache streams error', e);
     }
   }
 
@@ -415,7 +422,7 @@ export class TwitchService {
       })
       .catch((e) => {
         // Do not move lastLightRefreshAt on failure, so retries can happen sooner.
-        console.error('[Twitch] light background refresh failed:', e);
+        logger.error('[Twitch] light background refresh failed', e);
       })
       .finally(() => {
         this.lightRefreshInFlight = null;
