@@ -9,7 +9,7 @@ import { VideosStore } from '../../stores/videos.store';
 import { NewsStore } from '../../stores/news.store';
 import { TrumpStore } from '../../stores/trump.store';
 import { StreamsStore } from '../../stores/streams.store';
-import { TweetsStore } from '../../stores/tweets.store';
+import { MarketStore } from '../../stores/market.store';
 import { of, Subject } from 'rxjs';
 
 class MockIntersectionObserver {
@@ -40,6 +40,7 @@ const createMockStore = () => ({
   gameList: signal([]),
   gameFilter: signal<string | null>(null),
   tweets: signal([]),
+  market: signal([]),
   hasError: signal(false),
   loading: signal(false),
   error: signal(null),
@@ -70,7 +71,7 @@ describe('DashboardComponent', () => {
   let mockNewsStore: any;
   let mockTrumpStore: any;
   let mockStreamsStore: any;
-  let mockTweetsStore: any;
+  let mockMarketStore: any;
   let refreshAllSubject: Subject<any>;
 
   beforeEach(async () => {
@@ -82,7 +83,7 @@ describe('DashboardComponent', () => {
         streams: [],
         news: [],
         trump: [],
-        tweets: [],
+        market: [],
         weather: null,
         refreshedAt: new Date(),
       })),
@@ -91,7 +92,7 @@ describe('DashboardComponent', () => {
         streams: [],
         news: [],
         trump: [],
-        tweets: [],
+        market: [],
         weather: null,
         refreshedAt: new Date(),
       })),
@@ -108,7 +109,7 @@ describe('DashboardComponent', () => {
     mockNewsStore = createMockStore();
     mockTrumpStore = createMockStore();
     mockStreamsStore = createMockStore();
-    mockTweetsStore = createMockStore();
+    mockMarketStore = createMockStore();
 
     await TestBed.configureTestingModule({
       imports: [DashboardComponent, RouterTestingModule],
@@ -120,7 +121,7 @@ describe('DashboardComponent', () => {
     .overrideProvider(NewsStore, { useValue: mockNewsStore })
     .overrideProvider(TrumpStore, { useValue: mockTrumpStore })
     .overrideProvider(StreamsStore, { useValue: mockStreamsStore })
-    .overrideProvider(TweetsStore, { useValue: mockTweetsStore })
+    .overrideProvider(MarketStore, { useValue: mockMarketStore })
     .compileComponents();
 
     fixture = TestBed.createComponent(DashboardComponent);
@@ -137,7 +138,7 @@ describe('DashboardComponent', () => {
     expect(component.newsStore).toBeDefined();
     expect(component.trumpStore).toBeDefined();
     expect(component.streamsStore).toBeDefined();
-    expect(component.tweetsStore).toBeDefined();
+    expect(component.marketStore).toBeDefined();
   });
 
   it('should call getDashboardStream on init', () => {
@@ -180,7 +181,7 @@ describe('DashboardComponent', () => {
       streams: [createStream({ title: 'Live coding session (updated)', viewerCount: 999 })],
       news: [],
       trump: [],
-      tweets: [],
+      market: [],
       weather: null,
       refreshedAt: new Date(),
     });
@@ -205,7 +206,7 @@ describe('DashboardComponent', () => {
       streams: [],
       news: [],
       trump: [],
-      tweets: [],
+      market: [],
       weather: null,
       refreshedAt: new Date(),
     });

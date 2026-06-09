@@ -1,19 +1,32 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WeatherForecast, WeatherDay } from '../../models';
 
 @Component({
   selector: 'app-weather',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
-    @if (forecast()?.days?.length) {
+    @if (forecast()?.source === 'error') {
+      <div class="h-full flex flex-col items-center justify-center gap-2 text-text-secondary">
+        <div class="text-4xl">⚠️</div>
+        <div class="text-sm text-red-400">Données météo indisponibles. Vérifiez votre connexion.</div>
+      </div>
+    } @else if (forecast()?.days?.length) {
       <div class="space-y-3">
         <!-- Today highlight -->
         <div class="flex items-center gap-4 p-3 rounded-lg bg-primary/5 border border-primary/10">
           <div class="text-4xl">{{ getIcon(forecast()!.days[0]) }}</div>
           <div class="flex-1">
-            <div class="font-headline text-3xl font-bold text-text-primary">{{ forecast()!.days[0].temp }}°</div>
+            <div class="flex items-center gap-2">
+              <div class="font-headline text-3xl font-bold text-text-primary">{{ forecast()!.days[0].temp }}°</div>
+              @if (forecast()?.source === 'live') {
+                <span class="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="Live" data-testid="live-indicator"></span>
+              } @else if (forecast()?.source === 'cached') {
+                <span class="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" title="Cached"></span>
+              }
+            </div>
             <div class="text-text-secondary text-xs">{{ forecast()!.days[0].condition }}</div>
           </div>
           <div class="text-right text-xs text-text-secondary">
@@ -33,7 +46,7 @@ import { WeatherForecast, WeatherDay } from '../../models';
             <div class="text-center p-2 rounded-lg hover:bg-surface/80 transition-colors">
               <div class="text-xs text-text-secondary font-medium">{{ getDayName(day.forecastDate) }}</div>
               <div class="text-xl my-1">{{ getIcon(day) }}</div>
-              <div class="text-sm font-bold text-text-primary">{{ day.temp }}°</div>
+              <div class="text-sm font-bold text-text-primary">{{ day.tempMax }}°</div>
               <div class="text-xs text-text-secondary">{{ day.tempMin }}°/{{ day.tempMax }}°</div>
             </div>
           }

@@ -1,10 +1,11 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WeatherForecast, WeatherDay } from '../../models';
 
 @Component({
   selector: 'app-weather-popup',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <!-- Backdrop -->
@@ -21,10 +22,29 @@ import { WeatherForecast, WeatherDay } from '../../models';
             <div class="flex items-center gap-2 mb-1">
               <span class="w-2 h-2 rounded-full bg-[#6366F1] animate-pulse flex-shrink-0"></span>
               <h2 class="font-headline text-[20px] font-bold text-primary tracking-tight">NEO_METEO_HUB</h2>
+              @if (forecast()?.source === 'live') {
+                <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-500/10 border border-green-500/20">
+                  <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                  <span class="font-mono text-[9px] text-green-400">LIVE</span>
+                </span>
+              } @else if (forecast()?.source === 'cached') {
+                <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-500/10 border border-gray-500/20">
+                  <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                  <span class="font-mono text-[9px] text-gray-400">CACHED</span>
+                </span>
+              } @else if (forecast()?.source === 'error') {
+                <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/20">
+                  <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                  <span class="font-mono text-[9px] text-red-400">ERROR</span>
+                </span>
+              }
             </div>
             <div class="flex items-center gap-1.5 text-text-muted">
               <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
               <span class="font-label-caps text-[10px]">{{ forecast()?.city || 'N/A' }}</span>
+              @if (forecast()?.source === 'live') {
+                <span class="font-mono text-[9px] text-text-muted" data-testid="freshness-indicator">mis à jour</span>
+              }
             </div>
           </div>
           <button (click)="close.emit()" class="p-1 text-text-muted hover:text-text-primary transition-colors">
@@ -35,7 +55,11 @@ import { WeatherForecast, WeatherDay } from '../../models';
         <!-- Content -->
         <div class="p-md space-y-md overflow-y-auto max-h-[80vh]">
 
-          @if (forecast()?.days?.length) {
+          @if (forecast()?.source === 'error') {
+            <div class="text-center py-8">
+              <p class="font-label-caps text-[11px] text-red-400">Données météo indisponibles. Vérifiez votre connexion ou réessayez plus tard.</p>
+            </div>
+          } @else if (forecast()?.days?.length) {
 
             <!-- Today highlight -->
             <div class="flex items-center gap-4 p-4 rounded border border-[#6366F1]/30 bg-[#6366F1]/10">
@@ -73,7 +97,7 @@ import { WeatherForecast, WeatherDay } from '../../models';
                     </span>
                     <span class="text-xl">{{ getIcon(day) }}</span>
                     <div class="flex flex-col items-center">
-                      <span class="font-mono text-[13px] font-bold text-text-primary">{{ day.temp }}°</span>
+                      <span class="font-mono text-[13px] font-bold text-text-primary">{{ day.tempMax }}°</span>
                       <span class="font-mono text-[10px] text-text-muted">{{ day.tempMin }}°</span>
                     </div>
                   </div>
@@ -156,6 +180,7 @@ export class WeatherPopupComponent {
     // Scale: -10°C = 0%, 40°C = 100%
     const range = 50;
     const min = -10;
-    return Math.min(100, Math.max(0, ((day.temp - min) / range) * 100));
+    const centerTemp = (day.tempMin + day.tempMax) / 2;
+    return Math.min(100, Math.max(0, ((centerTemp - min) / range) * 100));
   }
 }

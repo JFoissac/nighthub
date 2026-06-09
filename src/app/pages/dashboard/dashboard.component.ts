@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, inject, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, inject, HostListener, ChangeDetectionStrategy, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HeaderComponent } from '../../components/header/header.component';
 import { StreamPlayerPanelComponent } from '../../components/stream/stream-player-panel.component';
@@ -7,7 +7,7 @@ import { VideoPlayerPopupComponent } from '../../components/video/video-player-p
 import { VideoPlayerPanelComponent } from '../../components/video/video-player-panel.component';
 import { SettingsModalComponent } from '../../components/settings-modal/settings-modal.component';
 import { WeatherPopupComponent } from '../../components/weather/weather-popup.component';
-import { TwitterSectionComponent } from '../../components/sections/twitter-section.component';
+import { MarketSectionComponent } from '../../components/sections/market-section.component';
 import { YoutubeSectionComponent } from '../../components/sections/youtube-section.component';
 import { StreamsSectionComponent } from '../../components/sections/streams-section.component';
 import { NewsSectionComponent } from '../../components/sections/news-section.component';
@@ -19,11 +19,14 @@ import { VideosStore } from '../../stores/videos.store';
 import { NewsStore } from '../../stores/news.store';
 import { TrumpStore } from '../../stores/trump.store';
 import { StreamsStore } from '../../stores/streams.store';
-import { TweetsStore } from '../../stores/tweets.store';
+import { MarketStore } from '../../stores/market.store';
+
+
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
     HeaderComponent,
@@ -33,7 +36,7 @@ import { TweetsStore } from '../../stores/tweets.store';
     VideoPlayerPanelComponent,
     SettingsModalComponent,
     WeatherPopupComponent,
-    TwitterSectionComponent,
+    MarketSectionComponent,
     YoutubeSectionComponent,
     StreamsSectionComponent,
     NewsSectionComponent,
@@ -52,7 +55,7 @@ import { TweetsStore } from '../../stores/tweets.store';
         [streamCount]="streamsStore.count()"
         [videoCount]="videosStore.count()"
         [newsCount]="newsStore.count()"
-        [tweetCount]="tweetsStore.count()"
+        [tweetCount]="marketStore.count()"
       ></app-header>
 
       @if (showWeather()) {
@@ -95,46 +98,61 @@ import { TweetsStore } from '../../stores/tweets.store';
       <div class="flex pt-12 min-h-screen">
         <main class="flex-1 min-w-0">
         <div class="p-6 max-w-screen-2xl mx-auto">
-        @if (isSyncing()) {
+        @if (isSyncing() || isLoading()) {
           <div class="mb-4 px-4 py-2 neo-glass rounded flex items-center gap-3 border border-primary/30">
             <span class="status-pulse"></span>
-            <span class="font-label-caps text-[10px] text-primary">INITIAL SYNC IN PROGRESS — DATA LOADING IN BACKGROUND...</span>
-            <span class="font-label-caps text-[9px] text-text-muted ml-auto">AUTO-REFRESH IN ~15S</span>
+            <span class="font-label-caps text-[10px] text-primary">{{ isLoading() ? loadingStatus() : 'INITIAL SYNC IN PROGRESS — DATA LOADING IN BACKGROUND...' }}</span>
+            <span class="font-label-caps text-[9px] text-text-muted ml-auto">CONNECTING TO NIGHTHUB SERVER</span>
           </div>
         }
-        @if (isLoading()) {
-          <div class="flex flex-col items-center justify-center py-20 gap-2">
-            <span class="font-label-caps text-[11px] text-text-muted animate-pulse">{{ loadingStatus() }}</span>
-          </div>
-        } @else {
 
-          <!-- Top Row: Twitter (5-col) + YouTube (7-col) -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <app-twitter-section></app-twitter-section>
+        <!-- Top Row: Market (5-col) + YouTube (7-col) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          @if (isLoading()) {
+            <div class="neo-glass rounded p-4 skeleton h-[380px]"></div>
+            <div class="neo-glass rounded p-4 skeleton h-[380px]"></div>
+          } @else {
+            <app-market-section></app-market-section>
             <app-youtube-section
               (selectVideo)="selectedVideo.set($event)"
               (openSettings)="showSettings.set(true)"
             ></app-youtube-section>
-          </div>
+          }
+        </div>
 
+        @if (isLoading()) {
+          <div class="neo-glass rounded p-4 skeleton h-[200px] my-5"></div>
+        } @else {
           <app-streams-section
             (selectStream)="onStreamSelect($event)"
             (openStreamList)="showStreamList.set(true)"
             (openSettings)="showSettings.set(true)"
           ></app-streams-section>
+        }
 
-          <!-- Bottom Row: AI Blog (6-col) + Trump Watch (6-col) -->
-          <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <!-- Bottom Row: AI Blog (6-col) + Trump Watch (6-col) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          @if (isLoading()) {
+            <div class="neo-glass rounded p-4 skeleton h-[500px]"></div>
+            <div class="neo-glass rounded p-4 skeleton h-[500px]"></div>
+          } @else {
             <app-news-section
               (feedAdded)="onFeedAdded($event)"
             ></app-news-section>
             <app-trump-section></app-trump-section>
-          </div>
-        }
+          }
+        </div>
         </div>
 
         <footer class="text-center py-4 border-t border-[#1E1E2E]">
-          <span class="font-label-caps text-[9px] text-text-muted">NIGHTHUB — TERMINAL DASHBOARD</span>
+          <span class="font-label-caps text-[9px] text-text-muted">
+            NIGHTHUB — TERMINAL DASHBOARD
+            @if (isLive()) {
+              <span class="ml-2 text-green-400">
+                <span class="inline-block w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse mr-1 align-middle"></span>LIVE
+              </span>
+            }
+          </span>
           @if (dashboardData()?.refreshedAt) {
             <span class="block mt-1 font-label-caps text-[9px] text-text-muted">LAST UPDATE: {{ dashboardData()!.refreshedAt | date:'short' }}</span>
           }
@@ -151,7 +169,7 @@ import { TweetsStore } from '../../stores/tweets.store';
     </div>
   `,
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
   private apiService = inject(ApiService);
   private toastService = inject(ToastService);
 
@@ -159,11 +177,12 @@ export class DashboardComponent implements OnInit {
   readonly newsStore = inject(NewsStore);
   readonly trumpStore = inject(TrumpStore);
   readonly streamsStore = inject(StreamsStore);
-  readonly tweetsStore = inject(TweetsStore);
+  readonly marketStore = inject(MarketStore);
 
   dashboardData = signal<DashboardData | null>(null);
   isLoading = signal(true);
   isSyncing = signal(false);
+  isLive = signal(false);
   loadingStatus = signal('LOADING DASHBOARD...');
   showSettings = signal(false);
   showWeather = signal(false);
@@ -172,6 +191,12 @@ export class DashboardComponent implements OnInit {
   selectedStream = signal<TwitchStream | null>(null);
   selectedVideo = signal<YoutubeVideo | null>(null);
   panelVideo = signal<YoutubeVideo | null>(null);
+
+  constructor() {
+    effect(() => {
+      const _ = this.isLive();
+    });
+  }
 
   @HostListener('document:keydown.escape')
   onEscape() {
@@ -185,6 +210,15 @@ export class DashboardComponent implements OnInit {
 
   ngOnInit() {
     this.loadDashboard();
+  }
+
+  private weatherRefreshInterval: ReturnType<typeof setInterval> | null = null;
+
+  ngOnDestroy() {
+    this.stopStoreAutoRefreshes();
+    if (this.weatherRefreshInterval) {
+      clearInterval(this.weatherRefreshInterval);
+    }
   }
 
   onStreamSelect(stream: TwitchStream) {
@@ -223,7 +257,7 @@ export class DashboardComponent implements OnInit {
     this.newsStore.setItems(data.news || []);
     this.trumpStore.setItems(data.trump || []);
     this.streamsStore.setItems(data.streams || []);
-    this.tweetsStore.setItems(data.tweets || []);
+    this.marketStore.setItems(data.market || []);
     this.reconcileSelectedStream(data.streams || []);
     this.dashboardData.set(data);
     this.isLoading.set(false);
@@ -254,65 +288,88 @@ export class DashboardComponent implements OnInit {
   }
 
   loadDashboard() {
-    console.log('[loadDashboard] START');
-    // Only show global loader on first load; subsequent refreshes update silently
     if (!this.dashboardData()) {
       this.isLoading.set(true);
     }
     this.loadingStatus.set('CONNECTING...');
 
     this.apiService.getDashboardStream((step: string) => {
-      console.log('[loadDashboard] SSE progress:', step);
       this.loadingStatus.set(step.toUpperCase());
     }).subscribe({
       next: (data) => {
-        console.log('[loadDashboard] SSE data received — counts:', {
-          streams: data.streams?.length ?? 0,
-          videos: data.videos?.length ?? 0,
-          news: data.news?.length ?? 0,
-          trump: data.trump?.length ?? 0,
-          tweets: data.tweets?.length ?? 0,
-        });
-
         this.applyDashboardData(data);
-
-        const isEmpty = !data.videos?.length && !data.tweets?.length && !data.streams?.length;
+        const isEmpty = !data.videos?.length && !data.streams?.length && !data.news?.length;
         if (isEmpty) {
           this.isSyncing.set(true);
           this.apiService.refreshAll().subscribe();
-          setTimeout(() => this.loadDashboard(), 15000);
         } else {
           this.isSyncing.set(false);
         }
+        this.startStoreAutoRefreshes();
       },
-      error: (sseErr) => {
-        console.warn('[loadDashboard] SSE failed, falling back to REST:', sseErr);
+      error: () => {
         this.loadingStatus.set('LOADING DASHBOARD...');
         this.apiService.getDashboard().subscribe({
           next: (data) => {
-            console.log('[loadDashboard] REST fallback data:', {
-              streams: data.streams?.length ?? 0,
-              videos: data.videos?.length ?? 0,
-              news: data.news?.length ?? 0,
-              trump: data.trump?.length ?? 0,
-            });
             this.applyDashboardData(data);
-            const isEmpty = !data.videos?.length && !data.tweets?.length && !data.streams?.length;
+            const isEmpty = !data.videos?.length && !data.streams?.length && !data.news?.length;
             if (isEmpty) {
               this.isSyncing.set(true);
               this.apiService.refreshAll().subscribe();
-              setTimeout(() => this.loadDashboard(), 15000);
             } else {
               this.isSyncing.set(false);
             }
+            this.startStoreAutoRefreshes();
           },
-          error: (err) => {
-            console.error('Failed to load dashboard:', err);
+          error: () => {
             this.isLoading.set(false);
+            this.startStoreAutoRefreshes();
           }
         });
       }
     });
+  }
+
+  private startStoreAutoRefreshes() {
+    this.stopStoreAutoRefreshes();
+    this.isLive.set(true);
+    this.marketStore.startAutoRefresh();
+    this.trumpStore.startAutoRefresh();
+    this.newsStore.startAutoRefresh();
+    this.streamsStore.startAutoRefresh();
+    this.videosStore.startAutoRefresh();
+    this.startWeatherRefresh();
+  }
+
+  private stopStoreAutoRefreshes() {
+    this.marketStore.stopAutoRefresh();
+    this.trumpStore.stopAutoRefresh();
+    this.newsStore.stopAutoRefresh();
+    this.streamsStore.stopAutoRefresh();
+    this.videosStore.stopAutoRefresh();
+    this.isLive.set(false);
+    if (this.weatherRefreshInterval) {
+      clearInterval(this.weatherRefreshInterval);
+      this.weatherRefreshInterval = null;
+    }
+  }
+
+  private startWeatherRefresh() {
+    // Refresh weather every 2 minutes (120000ms)
+    this.weatherRefreshInterval = setInterval(() => {
+      const city = this.dashboardData()?.weather?.city || 'Caen';
+      this.apiService.getWeather(city).subscribe({
+        next: (weather) => {
+          this.dashboardData.update((current) => {
+            if (!current) return current;
+            return { ...current, weather };
+          });
+        },
+        error: (err) => {
+          console.error('Weather refresh failed:', err);
+        }
+      });
+    }, 120000);
   }
 
   refreshAll() {
@@ -324,36 +381,29 @@ export class DashboardComponent implements OnInit {
 
   onSettingsSaved() {
     this.loadDashboard();
+    this.startStoreAutoRefreshes();
   }
 
   onFeedAdded(feedUrl: string) {
-    console.log('[onFeedAdded] feed URL:', feedUrl);
     this.apiService.getPreferences().subscribe({
       next: (prefs) => {
         const existing = (prefs.customRssFeeds || '').trim();
         const updated = existing ? `${existing}\n${feedUrl}` : feedUrl;
-        console.log('[onFeedAdded] saving prefs, customRssFeeds:', updated.substring(0, 80));
         this.apiService.savePreferences({ customRssFeeds: updated }).subscribe({
           next: () => {
-            console.log('[onFeedAdded] prefs saved, calling refreshNews...');
             this.apiService.refreshNews().subscribe({
               next: () => {
-                console.log('[onFeedAdded] news refreshed, updating news section');
                 this.apiService.getNews().subscribe({
                   next: (news) => {
                     this.newsStore.setItems(news || []);
                     this.dashboardData.update((current) => current ? ({ ...current, news: news || [] }) : current);
                   },
-                  error: (e) => console.error('[onFeedAdded] getNews error:', e),
                 });
               },
-              error: (e) => console.error('[onFeedAdded] refreshNews error:', e),
             });
           },
-          error: (e) => console.error('[onFeedAdded] savePreferences error:', e),
         });
       },
-      error: (e) => console.error('[onFeedAdded] getPreferences error:', e),
     });
   }
 }

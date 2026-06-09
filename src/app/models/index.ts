@@ -40,6 +40,7 @@ export interface WeatherDay {
   precipitation: number;
   forecastDate: Date;
   dayIndex: number;
+  source?: 'live' | 'cached' | 'error';
 }
 
 export interface WeatherForecast {
@@ -52,6 +53,8 @@ export interface WeatherForecast {
   wind?: number;
   humidity?: number;
   precipitation?: number;
+  source?: 'live' | 'cached' | 'error';
+  error?: string;
 }
 
 export interface TwitchStream {
@@ -105,4 +108,34 @@ export interface TweetItem {
   mediaUrl?: string;
   likes: number;
   retweets: number;
+}
+
+export interface MarketTicker {
+  symbol: string;
+  name: string;
+  price: number;
+  change24h: number;
+  changePercent24h: number;
+  change7d: number;
+  changePercent7d: number;
+  type: 'crypto' | 'stock';
+  marketCap?: number;
+  sparkline7d?: number[];
+  volume?: number;
+  high24h?: number;
+  low24h?: number;
+}
+
+export interface UserPreferences {
+  weatherCity: string;
+  twitchFollows: string;
+  twitchUsername: string;
+  youtubeChannels: string;
+  youtubeChannelIds: string;
+  twitterUsername: string;
+  twitterAccounts: string;
+  trumpMinCriticality: number;
+  customRssFeeds: string;
+  refreshInterval: number;
+  themeOledBlack: boolean;
 }
