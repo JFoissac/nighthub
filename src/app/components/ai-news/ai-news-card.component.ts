@@ -1,10 +1,11 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AiNewsItem } from '../../models';
 
 @Component({
   selector: 'app-ai-news-card',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     @if (item()) {

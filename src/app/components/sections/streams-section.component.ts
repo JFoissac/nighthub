@@ -1,4 +1,4 @@
-import { Component, output, inject } from '@angular/core';
+import { Component, output, inject, ElementRef, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TwitchStream } from '../../models';
 import { StreamsStore } from '../../stores/streams.store';
@@ -7,6 +7,7 @@ import { StreamCardComponent } from '../stream/stream-card.component';
 @Component({
   selector: 'app-streams-section',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, StreamCardComponent],
   template: `
     <section role="region" aria-label="Section des streams" class="mb-5 fade-in" style="animation-delay: 100ms">
@@ -48,24 +49,49 @@ import { StreamCardComponent } from '../stream/stream-card.component';
           }
         </div>
       }
-      <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-        @for (stream of store.filteredStreams(); track stream.twitchId || stream.id || $index) {
-          <app-stream-card [stream]="stream" (select)="selectStream.emit($event)"></app-stream-card>
-        }
-        @if (!store.filteredStreams().length) {
-          <div class="neo-glass rounded p-6 flex items-center gap-4">
-            <p class="font-label-caps text-[10px] text-text-muted">NO STREAMS LIVE —</p>
-            <button (click)="openSettings.emit()" class="font-label-caps text-[10px] text-primary underline">CONFIGURE CHANNELS</button>
+      @if (store.filteredStreams().length) {
+        <div class="relative group/scroll">
+          <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory" #scrollContainer>
+            @for (stream of store.filteredStreams(); track stream.twitchId || stream.id || $index) {
+              <app-stream-card [stream]="stream" (select)="selectStream.emit($event)"></app-stream-card>
+            }
           </div>
-        }
-      </div>
+          <button
+            (click)="scrollBy(-320)"
+            class="absolute left-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full neo-glass border border-[#1E1E2E] flex items-center justify-center text-text-muted hover:text-primary hover:border-primary transition-colors opacity-0 group-hover/scroll:opacity-100"
+            aria-label="Scroll left"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button
+            (click)="scrollBy(320)"
+            class="absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full neo-glass border border-[#1E1E2E] flex items-center justify-center text-text-muted hover:text-primary hover:border-primary transition-colors opacity-0 group-hover/scroll:opacity-100"
+            aria-label="Scroll right"
+          >
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      } @else {
+        <div class="neo-glass rounded p-6 flex items-center gap-4">
+          <p class="font-label-caps text-[10px] text-text-muted">NO STREAMS LIVE —</p>
+          <button (click)="openSettings.emit()" class="font-label-caps text-[10px] text-primary underline">CONFIGURE CHANNELS</button>
+        </div>
+      }
     </section>
   `,
 })
 export class StreamsSectionComponent {
   readonly store = inject(StreamsStore);
+  readonly scrollContainer = viewChild<ElementRef<HTMLDivElement>>('scrollContainer');
 
   selectStream = output<TwitchStream>();
   openStreamList = output<void>();
   openSettings = output<void>();
+
+  scrollBy(amount: number) {
+    const el = this.scrollContainer()?.nativeElement;
+    if (el) {
+      el.scrollBy({ left: amount, behavior: 'smooth' });
+    }
+  }
 }

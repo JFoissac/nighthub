@@ -1,10 +1,11 @@
-import { Component, input } from '@angular/core';
+import { Component, input, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TrumpItem } from '../../models';
 
 @Component({
   selector: 'app-trump-card',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     @if (item()) {

@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Output, signal, inject } from '@angular/core';
+import { Component, EventEmitter, Output, signal, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -6,6 +6,7 @@ import { ApiService } from '../../services/api.service';
 @Component({
   selector: 'app-rss-detect-modal',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FormsModule],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4" (click)="onBackdropClick($event)">
@@ -27,7 +28,10 @@ import { ApiService } from '../../services/api.service';
               <path d="M18 6L6 18M6 6l12 12"/>
             </svg>
           </button>
-        </div>
+          <button
+            (click)="close.emit()"
+            class="p-1.5 rounded hover:bg-background transition-colors text-text-muted hover:text-text-primary md:hidden"
+          ></button>
 
         <!-- Body -->
         <div class="px-5 py-4 space-y-4">

@@ -1,4 +1,4 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TweetsStore } from '../../stores/tweets.store';
 import { TweetCardComponent } from '../tweet/tweet-card.component';
@@ -6,6 +6,7 @@ import { TweetCardComponent } from '../tweet/tweet-card.component';
 @Component({
   selector: 'app-twitter-section',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, TweetCardComponent],
   template: `
     <section class="lg:col-span-5 neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 0ms">

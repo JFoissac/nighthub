@@ -1,10 +1,11 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ToastService, Toast } from '../../services/toast.service';
 
 @Component({
   selector: 'app-toast-container',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <div class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">

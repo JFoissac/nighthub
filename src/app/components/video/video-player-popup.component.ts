@@ -1,4 +1,4 @@
-import { Component, input, output, inject } from '@angular/core';
+import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { YoutubeVideo } from '../../models';
@@ -6,6 +6,7 @@ import { YoutubeVideo } from '../../models';
 @Component({
   selector: 'app-video-player-popup',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <!-- Backdrop -->

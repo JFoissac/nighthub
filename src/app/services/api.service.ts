@@ -4,7 +4,7 @@ import { Observable, catchError, throwError } from 'rxjs';
 
 export interface DashboardData {
   weather: any;
-  tweets: any[];
+  market: any[];
   streams: any[];
   videos: any[];
   news: any[];
@@ -36,6 +36,11 @@ export interface UserPreferences {
   customRssFeeds: string;
   refreshInterval: number;
   themeOledBlack: boolean;
+  marketRefreshInterval: number;
+  trumpRefreshInterval: number;
+  newsRefreshInterval: number;
+  streamsRefreshInterval: number;
+  youtubeRefreshInterval: number;
 }
 
 export interface YoutubeRemapHandleDiagnostic {
@@ -113,7 +118,7 @@ export class ApiService {
   getDashboardStream(onProgress: (step: string) => void): Observable<DashboardData> {
     return new Observable(subscriber => {
       const es = new EventSource(`${this.baseUrl}/dashboard/stream`);
-      const SSE_TIMEOUT_MS = 45000;
+      const SSE_TIMEOUT_MS = 5000;
       let done = false;
       let timeoutId: any;
 
@@ -198,6 +203,12 @@ export class ApiService {
 
   getNews(limit: number = 20): Observable<any[]> {
     return this.http.get<any[]>(`${this.baseUrl}/news?limit=${limit}`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  getMarketData(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.baseUrl}/market/live`).pipe(
       catchError(this.handleError)
     );
   }

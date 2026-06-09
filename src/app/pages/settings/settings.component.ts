@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, signal, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -7,6 +7,7 @@ import { ApiService, AuthStatus, UserPreferences } from '../../services/api.serv
 @Component({
   selector: 'app-settings',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="min-h-screen bg-background p-6">
@@ -163,6 +164,11 @@ export class SettingsComponent implements OnInit {
     customRssFeeds: '',
     refreshInterval: 30,
     themeOledBlack: false,
+    marketRefreshInterval: 60,
+    trumpRefreshInterval: 144,
+    newsRefreshInterval: 30,
+    streamsRefreshInterval: 5,
+    youtubeRefreshInterval: 30,
   };
 
   twitchList = signal<string[]>([]);

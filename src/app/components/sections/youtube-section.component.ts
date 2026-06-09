@@ -1,4 +1,4 @@
-import { Component, output, inject } from '@angular/core';
+import { Component, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { VideoCardComponent } from '../video/video-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
@@ -7,6 +7,7 @@ import { VideosStore } from '../../stores/videos.store';
 @Component({
   selector: 'app-youtube-section',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, VideoCardComponent, InfiniteScrollDirective],
   template: `
     <section class="lg:col-span-7 neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 50ms">

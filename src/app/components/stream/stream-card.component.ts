@@ -1,14 +1,15 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TwitchStream } from '../../models';
 
 @Component({
   selector: 'app-stream-card',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     @if (stream()) {
-      <div class="min-w-[220px] group cursor-pointer flex-shrink-0" (click)="select.emit(stream()!)">
+      <div class="min-w-[220px] group cursor-pointer flex-shrink-0 snap-start" (click)="select.emit(stream()!)">
         <div class="relative aspect-video rounded overflow-hidden mb-2 border border-[#1E1E2E] group-hover:border-primary transition-colors">
           <img [src]="stream()!.thumbnailUrl" [alt]="stream()!.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
           <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>

@@ -1,10 +1,11 @@
-import { Component, HostListener, input, output } from '@angular/core';
+import { Component, HostListener, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ExtractedNewsArticle } from '../../services/api.service';
 
 @Component({
   selector: 'app-news-article-reader-popup',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <div class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"

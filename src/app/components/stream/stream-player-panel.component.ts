@@ -1,4 +1,4 @@
-import { Component, input, output, inject, signal } from '@angular/core';
+import { Component, input, output, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { TwitchStream } from '../../models';
@@ -6,6 +6,7 @@ import { TwitchStream } from '../../models';
 @Component({
   selector: 'app-stream-player-panel',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <div class="relative h-[calc(100vh-3rem)] flex" #wrapper>

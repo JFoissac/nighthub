@@ -1,4 +1,4 @@
-import { Component, input, output, inject } from '@angular/core';
+import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TrumpItem } from '../../models';
 import { TrumpStore } from '../../stores/trump.store';
@@ -8,6 +8,7 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
 @Component({
   selector: 'app-trump-section',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, TrumpCardComponent, InfiniteScrollDirective],
   template: `
     <section class="neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 200ms">

@@ -1,10 +1,11 @@
-import { Component, input, output, signal, effect } from '@angular/core';
+import { Component, input, output, signal, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { YoutubeVideo } from '../../models';
 
 @Component({
   selector: 'app-video-card',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     @if (video()) {

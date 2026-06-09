@@ -7,14 +7,14 @@ import { patchState } from '@ngrx/signals';
 
 const mockStream = (id: string, isLive: boolean): TwitchStream => ({
   id,
-  streamId: id,
+  twitchId: id,
   title: `Stream ${id}`,
   thumbnailUrl: `https://twitch.tv/${id}.jpg`,
   viewerCount: isLive ? 1000 : 0,
   channelName: `Channel_${id}`,
+  channelAvatar: `https://twitch.tv/${id}_avatar.jpg`,
   gameName: 'Just Chatting',
   isLive,
-  startedAt: isLive ? new Date() : null,
   url: `https://twitch.tv/${id}`,
 });
 

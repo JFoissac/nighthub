@@ -1,11 +1,13 @@
-import { Component, input, output, signal, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, input, output, signal, OnDestroy, OnInit, inject, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ApiService } from '../../services/api.service';
+import { UserPreferences } from '../../models';
 
 @Component({
   selector: 'app-header',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <header class="fixed top-0 w-full z-50 flex justify-between items-center px-4 h-12 bg-[#0a0a14]/90 backdrop-blur-md border-b border-[#1E1E2E]">
       <div class="flex items-center gap-6">
@@ -84,7 +86,8 @@ import { ApiService } from '../../services/api.service';
 })
 export class HeaderComponent implements OnInit, OnDestroy {
   private apiService = inject(ApiService);
-  private prefs = signal<any>({});
+  private destroyRef = inject(DestroyRef);
+  private prefs = signal<UserPreferences | null>(null);
 
   isOled = signal(false);
   time = signal(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
@@ -105,13 +108,14 @@ export class HeaderComponent implements OnInit, OnDestroy {
   openWeather = output<void>();
   openStreamList = output<void>();
 
-  private intervalId: any;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit() {
     this.intervalId = setInterval(() => {
       this.time.set(new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
     }, 1000);
-    this.apiService.getPreferences().subscribe({
+
+    const prefsSub = this.apiService.getPreferences().subscribe({
       next: (prefs) => {
         this.prefs.set(prefs);
         const oled = prefs.themeOledBlack ?? false;
@@ -123,10 +127,16 @@ export class HeaderComponent implements OnInit, OnDestroy {
         }
       },
     });
+
+    this.destroyRef.onDestroy(() => {
+      prefsSub.unsubscribe();
+    });
   }
 
   ngOnDestroy() {
-    clearInterval(this.intervalId);
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
   }
 
   toggleOled() {
@@ -137,7 +147,10 @@ export class HeaderComponent implements OnInit, OnDestroy {
     } else {
       document.body.classList.remove('theme-oled');
     }
-    this.apiService.savePreferences({ ...this.prefs(), themeOledBlack: newVal } as any).subscribe();
+    const currentPrefs = this.prefs();
+    if (currentPrefs) {
+      this.apiService.savePreferences({ ...currentPrefs, themeOledBlack: newVal }).subscribe();
+    }
   }
 
   weatherIcon(): string {

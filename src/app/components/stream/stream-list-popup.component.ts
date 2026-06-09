@@ -1,10 +1,11 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TwitchStream } from '../../models';
 
 @Component({
   selector: 'app-stream-list-popup',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center">

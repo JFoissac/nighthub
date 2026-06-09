@@ -1,4 +1,4 @@
-import { Component, output, signal, computed, inject } from '@angular/core';
+import { Component, output, signal, computed, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { NewsStore } from '../../stores/news.store';
 import { ApiService, ExtractedNewsArticle } from '../../services/api.service';
@@ -89,6 +89,7 @@ function calculateRelevanceScore(
 @Component({
   selector: 'app-news-section',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, AiNewsCardComponent, InfiniteScrollDirective, RssDetectModalComponent, NewsArticleReaderPopupComponent],
   template: `
     <section class="neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 150ms">

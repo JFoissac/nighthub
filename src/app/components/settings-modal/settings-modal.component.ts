@@ -1,4 +1,4 @@
-import { Component, EventEmitter, OnInit, Output, signal, inject, computed } from '@angular/core';
+import { Component, EventEmitter, OnInit, Output, signal, inject, computed, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { forkJoin, of } from 'rxjs';
@@ -14,6 +14,7 @@ import {
 @Component({
   selector: 'app-settings-modal',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FormsModule],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4" (click)="onBackdropClick($event)">
@@ -312,29 +313,62 @@ import {
             </div>
           </section>
 
-          <!-- Refresh interval -->
-          <section class="space-y-3">
+          <!-- Refresh intervals per block -->
+          <section class="space-y-4">
             <div class="flex items-center gap-2 pb-2 border-b border-border/50">
               <span class="text-lg">🔄</span>
-              <h3 class="font-headline font-semibold text-text-primary">Rafraîchissement</h3>
+              <h3 class="font-headline font-semibold text-text-primary">Rafraîchissement par bloc</h3>
             </div>
-            <div class="space-y-2">
-              <label class="text-sm text-text-secondary">
-                Intervalle : <span class="font-mono font-bold text-text-primary">{{ prefs.refreshInterval }} min</span>
-              </label>
-              <input
-                type="range"
-                [(ngModel)]="prefs.refreshInterval"
-                min="5"
-                max="60"
-                step="5"
-                class="w-full accent-primary"
-              />
-              <div class="flex justify-between text-xs text-text-secondary">
-                <span>5 min</span>
-                <span>30 min</span>
-                <span>60 min</span>
+
+            <!-- Market -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center">
+                <label class="text-sm text-text-secondary">📈 Markets Live</label>
+                <span class="font-mono text-xs text-primary">{{ formatInterval(prefs.marketRefreshInterval) }}</span>
               </div>
+              <input type="range" [(ngModel)]="prefs.marketRefreshInterval" min="5" max="360" step="5" class="w-full accent-primary" />
+            </div>
+
+            <!-- Trump -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center">
+                <label class="text-sm text-text-secondary">🦅 Trump Watch</label>
+                <span class="font-mono text-xs text-primary">{{ formatInterval(prefs.trumpRefreshInterval) }}</span>
+              </div>
+              <input type="range" [(ngModel)]="prefs.trumpRefreshInterval" min="5" max="360" step="5" class="w-full accent-primary" />
+            </div>
+
+            <!-- News -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center">
+                <label class="text-sm text-text-secondary">📰 AI Blog</label>
+                <span class="font-mono text-xs text-primary">{{ formatInterval(prefs.newsRefreshInterval) }}</span>
+              </div>
+              <input type="range" [(ngModel)]="prefs.newsRefreshInterval" min="5" max="360" step="5" class="w-full accent-primary" />
+            </div>
+
+            <!-- Streams -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center">
+                <label class="text-sm text-text-secondary">📺 Live Streams</label>
+                <span class="font-mono text-xs text-primary">{{ formatInterval(prefs.streamsRefreshInterval) }}</span>
+              </div>
+              <input type="range" [(ngModel)]="prefs.streamsRefreshInterval" min="5" max="360" step="5" class="w-full accent-primary" />
+            </div>
+
+            <!-- YouTube -->
+            <div class="space-y-1.5">
+              <div class="flex justify-between items-center">
+                <label class="text-sm text-text-secondary">▶️ YouTube</label>
+                <span class="font-mono text-xs text-primary">{{ formatInterval(prefs.youtubeRefreshInterval) }}</span>
+              </div>
+              <input type="range" [(ngModel)]="prefs.youtubeRefreshInterval" min="5" max="360" step="5" class="w-full accent-primary" />
+            </div>
+
+            <div class="flex justify-between text-xs text-text-secondary pt-1">
+              <span>5 min</span>
+              <span>3h</span>
+              <span>6h</span>
             </div>
           </section>
         </div>
@@ -564,6 +598,11 @@ export class SettingsModalComponent implements OnInit {
     customRssFeeds: '',
     refreshInterval: 30,
     themeOledBlack: false,
+    marketRefreshInterval: 60,
+    trumpRefreshInterval: 144,
+    newsRefreshInterval: 30,
+    streamsRefreshInterval: 5,
+    youtubeRefreshInterval: 30,
   };
 
   themeOled = false;
@@ -947,6 +986,14 @@ export class SettingsModalComponent implements OnInit {
         this.isSaving.set(false);
       },
     });
+  }
+
+  formatInterval(minutes: number): string {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h > 0 && m > 0) return `${h}h ${m}m`;
+    if (h > 0) return `${h}h`;
+    return `${m} min`;
   }
 
   onBackdropClick(event: MouseEvent) {
