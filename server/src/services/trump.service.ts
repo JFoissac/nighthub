@@ -1,6 +1,12 @@
 import { prisma } from '../db/prisma.client';
 import { logger } from '../utils/logger';
 import Parser from 'rss-parser';
+import {
+  buildTrumpScoringProfile,
+  createDefaultTrumpScoringProfile,
+  scoreTrumpContent,
+  type TrumpScoringProfile,
+} from './trump.scoring';
 
 const rssParser = new Parser({
   timeout: 10000,
@@ -22,6 +28,8 @@ const SCRAPECREATORS_API_URL = 'https://api.scrapecreators.com/v1/truthsocial/us
 /** Max 10 refreshes/day = minimum 144 min between API calls */
 const MIN_REFRESH_INTERVAL_MS = 144 * 60 * 1000;
 let lastRefreshedAt = 0;
+let lastScoringProfileLoadedAt = 0;
+let cachedScoringProfile: TrumpScoringProfile = createDefaultTrumpScoringProfile();
 
 function getScrapeCreatorsApiKey(): string {
   return process.env.SCRAPECREATORS_API_KEY || '';
@@ -65,6 +73,8 @@ const SENTIMENT_POS = [
 
 export class TrumpService {
   async fetchTrumpTweets(limit: number = 20): Promise<any[]> {
+    await this.refreshScoringProfile();
+
     // Enforce max 10 refreshes/day — skip if data is recent
     if (!shouldRefresh()) {
       logger.info('[Trump] Skipping refresh — data is recent (< 2.4h)');
@@ -185,7 +195,10 @@ export class TrumpService {
     const content = this.stripHtml(rawContent);
     const lower = content.toLowerCase();
 
-    const criticality = this.calcCriticality(lower);
+    const criticality = scoreTrumpContent(content, cachedScoringProfile, {
+      likes: post.favourites_count || post.favorites_count || post.likes_count || 0,
+      retweets: post.reblogs_count || post.reposts_count || post.shares_count || 0,
+    });
     const sentiment = this.analyzeSentiment(lower);
     const type = this.classifyType(lower);
     const keywords = this.extractKeywords(lower).slice(0, 5).join(',');
@@ -227,7 +240,10 @@ export class TrumpService {
     const content = this.cleanContent(raw);
     const lower = content.toLowerCase();
 
-    const criticality = this.calcCriticality(lower);
+    const criticality = scoreTrumpContent(content, cachedScoringProfile, {
+      likes: 0,
+      retweets: 0,
+    });
     const sentiment = this.analyzeSentiment(lower);
     const type = this.classifyType(lower);
     const keywords = this.extractKeywords(lower).slice(0, 5).join(',');
@@ -262,15 +278,38 @@ export class TrumpService {
       .replace(/\s+/g, ' ').trim();
   }
 
-  private calcCriticality(lower: string): number {
-    let score = 0;
-    for (const kw of CRITICAL_KEYWORDS.high) if (lower.includes(kw)) score += 3;
-    for (const kw of CRITICAL_KEYWORDS.medium) if (lower.includes(kw)) score += 2;
-    for (const kw of CRITICAL_KEYWORDS.low) if (lower.includes(kw)) score += 1;
-    // Caps and exclamation
-    const excl = (lower.match(/!/g) || []).length;
-    score += Math.min(excl, 3);
-    return Math.min(10, Math.round(score));
+  private async refreshScoringProfile(): Promise<void> {
+    const now = Date.now();
+    if (now - lastScoringProfileLoadedAt < 15 * 60 * 1000) return;
+
+    try {
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const corpus = await prisma.trumpTweet.findMany({
+        where: { tweetDate: { gte: cutoff } },
+        orderBy: [{ tweetDate: 'desc' }],
+        take: 300,
+        select: {
+          content: true,
+          criticality: true,
+          isBreaking: true,
+          likes: true,
+          retweets: true,
+          tweetDate: true,
+          type: true,
+          keywords: true,
+        },
+      });
+
+      cachedScoringProfile = buildTrumpScoringProfile(corpus);
+      lastScoringProfileLoadedAt = now;
+      logger.info('[Trump] Scoring profile refreshed', { corpusSize: corpus.length });
+    } catch (error) {
+      logger.warn('[Trump] Failed to refresh scoring profile', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      cachedScoringProfile = createDefaultTrumpScoringProfile();
+      lastScoringProfileLoadedAt = now;
+    }
   }
 
   private analyzeSentiment(lower: string): string {
@@ -342,6 +381,8 @@ export class TrumpService {
         logger.error('Cache trump tweet error', e);
       }
     }
+
+    lastScoringProfileLoadedAt = 0;
   }
 
   async getCachedTrumpTweets(limit: number = 20): Promise<any[]> {
