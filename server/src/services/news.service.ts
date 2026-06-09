@@ -505,6 +505,9 @@ private async cacheNews(items: any[]): Promise<void> {
         signal: AbortSignal.timeout(8000),
         redirect: 'follow',
       });
+      if (res.status >= 300 && res.status < 400) {
+        throw new Error(ARTICLE_URL_NOT_ALLOWED);
+      }
       if (res.status >= 400) {
         throw new Error(`HTTP_${res.status}`);
       }

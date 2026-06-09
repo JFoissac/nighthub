@@ -315,6 +315,7 @@ describe('NewsService', () => {
         title: 'Latest AI Update',
         source: 'example.com',
         content: 'First paragraph with useful context.\n\nSecond paragraph with additional detail.',
+        contentHtml: '<p>First paragraph with useful context.</p>\n<p>Second paragraph with additional detail.</p>',
         url: 'https://example.com/news/ai-update',
       });
     });
