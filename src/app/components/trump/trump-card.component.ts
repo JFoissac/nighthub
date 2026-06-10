@@ -84,27 +84,25 @@ export class TrumpCardComponent {
   }
 
   getCriticalityClass(): string {
-    const c = this.item()?.criticality || 0;
-    if (c >= 8) return 'bg-red-500/20 text-red-400';
-    if (c >= 6) return 'bg-orange-500/20 text-orange-400';
-    if (c >= 4) return 'bg-yellow-500/20 text-yellow-400';
-    return 'bg-green-500/20 text-green-400';
+    switch (this.getSeverityLevel()) {
+      case 'critical': return 'bg-red-500/20 text-red-400';
+      case 'high': return 'bg-orange-500/20 text-orange-400';
+      case 'medium': return 'bg-yellow-500/20 text-yellow-400';
+      default: return 'bg-green-500/20 text-green-400';
+    }
   }
 
   getCriticalityLabel(): string {
-    const c = this.item()?.criticality || 0;
-    if (c >= 8) return 'CRITIQUE';
-    if (c >= 6) return 'IMPORTANT';
-    if (c >= 4) return 'MOYEN';
-    return 'FAIBLE';
+    return this.item()?.severityLabel || this.getSeverityFallback().label;
   }
 
   getCriticalityBarClass(): string {
-    const c = this.item()?.criticality || 0;
-    if (c >= 8) return 'bg-red-500';
-    if (c >= 6) return 'bg-orange-500';
-    if (c >= 4) return 'bg-yellow-500';
-    return 'bg-green-500';
+    switch (this.getSeverityLevel()) {
+      case 'critical': return 'bg-red-500';
+      case 'high': return 'bg-orange-500';
+      case 'medium': return 'bg-yellow-500';
+      default: return 'bg-green-500';
+    }
   }
 
   getSentimentIcon(): string {
@@ -119,5 +117,17 @@ export class TrumpCardComponent {
     if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
     if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
     return String(n);
+  }
+
+  private getSeverityLevel(): 'low' | 'medium' | 'high' | 'critical' {
+    return this.item()?.severityLevel || this.getSeverityFallback().level;
+  }
+
+  private getSeverityFallback(): { level: 'low' | 'medium' | 'high' | 'critical'; label: 'FAIBLE' | 'MOYEN' | 'IMPORTANT' | 'CRITIQUE' } {
+    const c = this.item()?.criticality || 0;
+    if (c >= 8) return { level: 'critical', label: 'CRITIQUE' };
+    if (c >= 6) return { level: 'high', label: 'IMPORTANT' };
+    if (c >= 4) return { level: 'medium', label: 'MOYEN' };
+    return { level: 'low', label: 'FAIBLE' };
   }
 }

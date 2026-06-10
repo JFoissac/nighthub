@@ -2,11 +2,11 @@ import { prisma } from '../db/prisma.client';
 import { logger } from '../utils/logger';
 import Parser from 'rss-parser';
 import {
-  buildTrumpScoringProfile,
-  createDefaultTrumpScoringProfile,
   scoreTrumpContent,
   type TrumpScoringProfile,
 } from './trump.scoring';
+import { buildTrumpTrainedProfile } from './trump.training';
+import { annotateTrumpSeverity, isTrumpBreaking } from './trump-severity';
 
 const rssParser = new Parser({
   timeout: 10000,
@@ -29,7 +29,7 @@ const SCRAPECREATORS_API_URL = 'https://api.scrapecreators.com/v1/truthsocial/us
 const MIN_REFRESH_INTERVAL_MS = 144 * 60 * 1000;
 let lastRefreshedAt = 0;
 let lastScoringProfileLoadedAt = 0;
-let cachedScoringProfile: TrumpScoringProfile = createDefaultTrumpScoringProfile();
+let cachedScoringProfile: TrumpScoringProfile = buildTrumpTrainedProfile();
 
 function getScrapeCreatorsApiKey(): string {
   return process.env.SCRAPECREATORS_API_KEY || '';
@@ -202,14 +202,14 @@ export class TrumpService {
     const sentiment = this.analyzeSentiment(lower);
     const type = this.classifyType(lower);
     const keywords = this.extractKeywords(lower).slice(0, 5).join(',');
-    const isBreaking = criticality >= 7;
+    const isBreaking = isTrumpBreaking(criticality);
 
     const postId = String(post.id || post.post_id || '');
     const tweetId = postId.replace(/\D/g, '').slice(-18) || String(Date.now());
 
     const createdAt = post.created_at || post.createdAt || post.timestamp;
 
-    return {
+    return annotateTrumpSeverity({
       tweetId,
       content,
       type,
@@ -221,7 +221,7 @@ export class TrumpService {
       isBreaking,
       url: post.url || post.link || `https://truthsocial.com/@realDonaldTrump/posts/${postId}`,
       tweetDate: createdAt ? new Date(createdAt) : new Date(),
-    };
+    });
   }
 
   private stripHtml(html: string): string {
@@ -247,7 +247,7 @@ export class TrumpService {
     const sentiment = this.analyzeSentiment(lower);
     const type = this.classifyType(lower);
     const keywords = this.extractKeywords(lower).slice(0, 5).join(',');
-    const isBreaking = criticality >= 7;
+    const isBreaking = isTrumpBreaking(criticality);
 
     // Extract tweet ID from nitter URL
     const tweetId = (item.guid || item.link || '')
@@ -255,7 +255,7 @@ export class TrumpService {
       .replace(/#.*/, '')
       .trim() || String(Date.now());
 
-    return {
+    return annotateTrumpSeverity({
       tweetId,
       content,
       type,
@@ -267,7 +267,7 @@ export class TrumpService {
       isBreaking,
       url: (item.link || '').replace('nitter.net', 'x.com').replace('/status/', '/status/'),
       tweetDate: item.pubDate ? new Date(item.pubDate) : new Date(),
-    };
+    });
   }
 
   private cleanContent(text: string): string {
@@ -300,14 +300,14 @@ export class TrumpService {
         },
       });
 
-      cachedScoringProfile = buildTrumpScoringProfile(corpus);
+      cachedScoringProfile = buildTrumpTrainedProfile(corpus);
       lastScoringProfileLoadedAt = now;
       logger.info('[Trump] Scoring profile refreshed', { corpusSize: corpus.length });
     } catch (error) {
       logger.warn('[Trump] Failed to refresh scoring profile', {
         error: error instanceof Error ? error.message : String(error),
       });
-      cachedScoringProfile = createDefaultTrumpScoringProfile();
+      cachedScoringProfile = buildTrumpTrainedProfile();
       lastScoringProfileLoadedAt = now;
     }
   }
@@ -393,7 +393,9 @@ export class TrumpService {
         take: limit,
         orderBy: [{ tweetDate: 'desc' }],
       });
-      if (tweets.length > 0) return tweets;
+      if (tweets.length > 0) {
+        return tweets.map((tweet) => annotateTrumpSeverity(tweet));
+      }
     } catch (e) {
       logger.error('Get cached trump tweets error', e);
     }
@@ -408,5 +410,3 @@ export class TrumpService {
 export function createTrumpService(): TrumpService {
   return new TrumpService();
 }
-
-export const trumpService = createTrumpService();
