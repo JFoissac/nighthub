@@ -1,0 +1,75 @@
+import { Router } from 'express';
+import dashboardRoutes from './dashboard.routes';
+import youtubeRoutes from './youtube.routes';
+import twitchRoutes from './twitch.routes';
+import newsRoutes from './news.routes';
+import preferencesRoutes from './preferences.routes';
+import marketRoutes from './market.routes';
+import { validateCity, validateLimit } from './route.utils';
+import { weatherService } from '../services/weather.service';
+import { trumpService } from '../services/trump.service';
+import { logger } from '../utils/logger';
+import { youtubeService } from '../services/youtube.service';
+
+async function getTrump(req: any, res: any) {
+  try {
+    const limit = validateLimit(req.query.limit);
+    const tweets = await trumpService.getCachedTrumpTweets(limit);
+    res.json(tweets);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch Trump tweets' });
+  }
+}
+
+async function refreshTrump(_req: any, res: any) {
+  try {
+    const tweets = await trumpService.fetchTrumpTweets(20);
+    res.json({ success: true, count: tweets.length });
+  } catch (error) {
+    logger.error('Refresh Trump failed', error, { route: '/refresh/trump' });
+    res.status(500).json({ error: 'Failed to refresh Trump tweets' });
+  }
+}
+
+async function getWeather(req: any, res: any) {
+  try {
+    const city = validateCity(req.query.city);
+    const forecast = await weatherService.getWeeklyForecast(city);
+    if (forecast && forecast.source === 'error') {
+      res.status(503).json(forecast);
+      return;
+    }
+    res.json(forecast);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch weather' });
+  }
+}
+
+async function getVideos(req: any, res: any) {
+  try {
+    const limit = validateLimit(req.query.limit);
+    const videos = await youtubeService.getLatestVideos(limit);
+    res.json(videos);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch videos' });
+  }
+}
+
+export function createApiRouter() {
+  const router = Router();
+
+  router.use(dashboardRoutes);
+  router.use('/youtube', youtubeRoutes);
+  router.use('/twitch', twitchRoutes);
+  router.use(newsRoutes);
+  router.use(preferencesRoutes);
+  router.use('/market', marketRoutes);
+  router.get('/videos', getVideos);
+  router.get('/trump', getTrump);
+  router.get('/weather', getWeather);
+  router.post('/refresh/trump', refreshTrump);
+
+  return router;
+}
+
+export default createApiRouter();

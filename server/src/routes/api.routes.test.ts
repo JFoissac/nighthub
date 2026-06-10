@@ -79,6 +79,12 @@ vi.mock('../services/trump.service', () => ({
   },
 }));
 
+vi.mock('../services/market.service', () => ({
+  marketService: {
+    getLiveMarketData: vi.fn(),
+  },
+}));
+
 vi.mock('../services/aggregator.service', () => ({
   aggregatorService: {
     getDashboardData: vi.fn(),
@@ -96,10 +102,32 @@ import { trumpService } from '../services/trump.service';
 import { aggregatorService } from '../services/aggregator.service';
 import { prisma } from '../db/prisma.client';
 
+function getMountedPrefix(layer: any): string {
+  const pattern = String(layer.regexp || '');
+  if (pattern.includes('\\/youtube')) return '/youtube';
+  if (pattern.includes('\\/twitch')) return '/twitch';
+  if (pattern.includes('\\/market')) return '/market';
+  return '';
+}
+
+function findRouteLayer(stack: any[], path: string, method: string, prefix = ''): any | null {
+  for (const layer of stack) {
+    if (layer.route) {
+      const fullPath = `${prefix}${layer.route.path}`;
+      if (fullPath === path && layer.route.methods[method]) {
+        return layer;
+      }
+    }
+    if (layer.handle?.stack) {
+      const nested = findRouteLayer(layer.handle.stack, path, method, `${prefix}${getMountedPrefix(layer)}`);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 function getHandler(path: string, method: string) {
-  const layer = (router as any).stack.find(
-    (l: any) => l.route && l.route.path === path && l.route.methods[method]
-  );
+  const layer = findRouteLayer((router as any).stack, path, method);
   if (!layer) throw new Error(`Route ${method.toUpperCase()} ${path} not found`);
   const stack = layer.route.stack.map((s: any) => s.handle);
   return async (req: any, res: any) => {

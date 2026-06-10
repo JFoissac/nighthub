@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { aggregatorService } from '../services/aggregator.service';
-import { validateLimit } from './api.routes';
-import { SSE_HEARTBEAT_INTERVAL_MS, SSE_HEARTBEAT_MAX_INTERVAL_MS } from '../config/constants';
+import { validateLimit } from './route.utils';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -24,29 +23,16 @@ async function getDashboardStream(_req: Request, res: Response) {
     'X-Accel-Buffering': 'no',
   });
 
-  let heartbeatCount = 0;
-  let currentHeartbeatInterval = SSE_HEARTBEAT_INTERVAL_MS;
-  let heartbeatId: ReturnType<typeof setTimeout> | null = null;
+  let heartbeatId: ReturnType<typeof setInterval> | null = null;
 
   const sendEvent = (data: any, event?: string) => {
     if (event) res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  const scheduleHeartbeat = () => {
-    if (heartbeatId) clearTimeout(heartbeatId);
-    heartbeatId = setTimeout(() => {
-      sendEvent({ ts: Date.now(), count: heartbeatCount++ }, 'heartbeat');
-      // Exponential backoff for heartbeats (cap at max interval)
-      currentHeartbeatInterval = Math.min(
-        currentHeartbeatInterval * 1.5,
-        SSE_HEARTBEAT_MAX_INTERVAL_MS
-      );
-      scheduleHeartbeat();
-    }, currentHeartbeatInterval);
-  };
-
-  scheduleHeartbeat();
+  heartbeatId = setInterval(() => {
+    sendEvent({ ts: Date.now() }, 'heartbeat');
+  }, 4000);
 
   try {
     const data = await aggregatorService.getDashboardData((step: string) => {
@@ -57,7 +43,7 @@ async function getDashboardStream(_req: Request, res: Response) {
     logger.error('Dashboard SSE failed', error, { route: '/dashboard/stream' });
     sendEvent({ error: 'Failed to fetch dashboard data' }, 'error');
   } finally {
-    if (heartbeatId) clearTimeout(heartbeatId);
+    if (heartbeatId) clearInterval(heartbeatId);
     res.end();
   }
 }
