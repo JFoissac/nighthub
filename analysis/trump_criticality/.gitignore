@@ -1,0 +1,4 @@
+artifacts/*.csv
+artifacts/*.json
+artifacts/*.md
+scripts/__pycache__/
