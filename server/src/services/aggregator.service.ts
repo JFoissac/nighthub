@@ -1,4 +1,3 @@
-import cron from 'node-cron';
 import { weatherService } from './weather.service';
 import { newsService } from './news.service';
 import { youtubeService } from './youtube.service';
@@ -7,56 +6,30 @@ import { trumpService } from './trump.service';
 import { marketService } from './market.service';
 import { logger } from '../utils/logger';
 import { RELEVANCE } from '../config/constants';
+import { createAggregatorCronJobs } from '../jobs/aggregator.cron';
 
 export class AggregatorService {
-  private cronInitialized = false;
   private isShuttingDown = false;
+  private cronJobs: { stop: () => void } | null = null;
 
   start(): void {
-    if (this.cronInitialized) {
+    if (this.cronJobs) {
       return;
     }
-    this.cronInitialized = true;
-    this.initCronJobs();
+    this.cronJobs = createAggregatorCronJobs({
+      aggregatorService: this,
+      youtubeService,
+      shouldRun: () => !this.isShuttingDown,
+      log: logger,
+    });
     logger.info('Aggregator cron jobs started');
   }
 
   stop(): void {
     this.isShuttingDown = true;
-    this.cronInitialized = false;
+    this.cronJobs?.stop();
+    this.cronJobs = null;
     logger.info('Aggregator cron jobs stopped');
-  }
-
-  private initCronJobs(): void {
-    // Refresh all data every 30 minutes
-    cron.schedule('*/30 * * * *', () => {
-      if (this.isShuttingDown) return;
-      logger.info('Cron: Refreshing all data');
-      this.refreshAll();
-    });
-
-    // Check Twitch live status every 5 minutes
-    cron.schedule('*/5 * * * *', () => {
-      if (this.isShuttingDown) return;
-      logger.debug('Cron: Checking Twitch streams');
-      this.refreshTwitch();
-    });
-
-    // Verify YouTube live stream status every 5 minutes
-    cron.schedule('*/5 * * * *', () => {
-      if (this.isShuttingDown) return;
-      logger.debug('Cron: Verifying YouTube live streams');
-      youtubeService.verifyAndCleanLiveStreams().catch((e) => logger.error('Verify live streams failed', e));
-    });
-
-    // Refresh Trump tweets every 15 min (actual API capped at 10x/day by shouldRefresh)
-    cron.schedule('*/15 * * * *', () => {
-      if (this.isShuttingDown) return;
-      logger.debug('Cron: Refreshing Trump tweets');
-      this.refreshTrump();
-    });
-
-    logger.info('Aggregator cron jobs initialized');
   }
 
   async refreshAll(): Promise<void> {

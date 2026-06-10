@@ -1,11 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import cron from 'node-cron';
-
-vi.mock('node-cron', () => ({
-  default: {
-    schedule: vi.fn(),
-  },
-}));
 
 vi.mock('rss-parser', () => ({
   default: function () {
@@ -67,17 +60,31 @@ vi.mock('./trump.service', () => ({
   },
 }));
 
+vi.mock('./market.service', () => ({
+  marketService: {
+    getLiveMarketData: vi.fn(),
+  },
+}));
+
+vi.mock('../jobs/aggregator.cron', () => ({
+  createAggregatorCronJobs: vi.fn().mockReturnValue({
+    stop: vi.fn(),
+  }),
+}));
+
 import { aggregatorService } from './aggregator.service';
 import { weatherService } from './weather.service';
 import { newsService } from './news.service';
 import { youtubeService } from './youtube.service';
 import { twitchService } from './twitch.service';
 import { trumpService } from './trump.service';
+import { createAggregatorCronJobs } from '../jobs/aggregator.cron';
 
 describe('AggregatorService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (aggregatorService as any).cronInitialized = false;
+    (aggregatorService as any).cronJobs = null;
+    (aggregatorService as any).isShuttingDown = false;
   });
 
   describe('calculateRelevanceScore', () => {
@@ -137,39 +144,24 @@ describe('AggregatorService', () => {
     });
   });
 
-  describe('start/initCronJobs', () => {
-    it('schedules expected cron expressions and twitch callback behavior', async () => {
-      aggregatorService.start();
-      const scheduleCalls = (cron.schedule as any).mock.calls as [string, () => void][];
-      expect(scheduleCalls.map(([expression]) => expression)).toEqual([
-        '*/30 * * * *',
-        '*/5 * * * *',
-        '*/5 * * * *',
-        '*/15 * * * *',
-      ]);
+  describe('cron lifecycle', () => {
+    it('creates cron jobs once and stops them on shutdown', () => {
+      const stop = vi.fn();
+      (createAggregatorCronJobs as any).mockReturnValue({ stop });
 
-      const refreshTwitchSpy = vi.spyOn(aggregatorService, 'refreshTwitch').mockResolvedValue();
-      (youtubeService.verifyAndCleanLiveStreams as any).mockResolvedValue(undefined);
-
-      const fiveMinuteCallbacks = scheduleCalls
-        .filter(([expression]) => expression === '*/5 * * * *')
-        .map(([, callback]) => callback);
-      expect(fiveMinuteCallbacks).toHaveLength(2);
-
-      for (const callback of fiveMinuteCallbacks) {
-        callback();
-      }
-      await Promise.resolve();
-
-      expect(refreshTwitchSpy).toHaveBeenCalledTimes(1);
-      expect(youtubeService.verifyAndCleanLiveStreams).toHaveBeenCalledTimes(1);
-      refreshTwitchSpy.mockRestore();
-    });
-
-    it('is idempotent and does not register duplicate cron jobs', () => {
       aggregatorService.start();
       aggregatorService.start();
-      expect(cron.schedule).toHaveBeenCalledTimes(4);
+
+      expect(createAggregatorCronJobs).toHaveBeenCalledTimes(1);
+      expect(createAggregatorCronJobs).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aggregatorService,
+          youtubeService,
+        })
+      );
+
+      aggregatorService.stop();
+      expect(stop).toHaveBeenCalledTimes(1);
     });
   });
 
