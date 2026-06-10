@@ -31,6 +31,26 @@ export const MarketStore = signalStore(
     tickers: computed(() => store.items()),
     crypto: computed(() => store.items().filter(t => t.type === 'crypto')),
     stocks: computed(() => store.items().filter(t => t.type === 'stock')),
+    groupedStocks: computed(() => {
+      const groups = new Map<string, { key: string; label: string; tickers: MarketTicker[] }>();
+
+      store.items()
+        .filter((ticker) => ticker.type === 'stock')
+        .forEach((ticker) => {
+          const key = ticker.groupKey || 'indices';
+          const label = ticker.groupLabel || 'INDICES & ETFS';
+          const group = groups.get(key);
+
+          if (group) {
+            group.tickers.push(ticker);
+            return;
+          }
+
+          groups.set(key, { key, label, tickers: [ticker] });
+        });
+
+      return [...groups.values()];
+    }),
     isLoading: computed(() => store.loading()),
     hasError: computed(() => store.error() !== null),
     count: computed(() => store.items().length),

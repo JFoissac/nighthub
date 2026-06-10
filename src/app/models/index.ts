@@ -24,6 +24,8 @@ export interface TrumpItem {
   likes: number;
   retweets: number;
   isBreaking: boolean;
+  severityLevel?: 'low' | 'medium' | 'high' | 'critical';
+  severityLabel?: 'FAIBLE' | 'MOYEN' | 'IMPORTANT' | 'CRITIQUE';
   tweetDate: Date;
   timestamp?: Date;
 }
@@ -123,6 +125,8 @@ export interface MarketTicker {
   volume?: number;
   high24h?: number;
   low24h?: number;
+  groupKey?: string;
+  groupLabel?: string;
 }
 
 export interface UserPreferences {

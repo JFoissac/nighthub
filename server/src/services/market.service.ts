@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger';
+import { TRACKED_STOCKS } from './market.catalog';
 
 export interface MarketTicker {
   symbol: string;
@@ -13,6 +14,8 @@ export interface MarketTicker {
   low24h: number;
   sparkline7d: number[];
   type: 'crypto' | 'stock';
+  groupKey?: string;
+  groupLabel?: string;
 }
 
 const BINANCE_SYMBOLS = [
@@ -21,15 +24,6 @@ const BINANCE_SYMBOLS = [
   { symbol: 'SOLUSDT', name: 'Solana', display: 'SOL' },
   { symbol: 'XRPUSDT', name: 'XRP', display: 'XRP' },
   { symbol: 'ADAUSDT', name: 'Cardano', display: 'ADA' },
-];
-
-const YAHOO_SYMBOLS = [
-  { symbol: '^GSPC', name: 'S&P 500', display: 'SPX' },
-  { symbol: '^IXIC', name: 'NASDAQ', display: 'IXIC' },
-  { symbol: '^DJI', name: 'Dow Jones', display: 'DJI' },
-  { symbol: '^VIX', name: 'VIX', display: 'VIX' },
-  { symbol: 'SPY', name: 'SPDR S&P 500', display: 'SPY' },
-  { symbol: 'QQQ', name: 'Invesco QQQ', display: 'QQQ' },
 ];
 
 function getCoinGeckoKey(): string {
@@ -177,74 +171,78 @@ export class MarketService {
   }
 
   private async fetchStocks(): Promise<MarketTicker[]> {
-    const results: MarketTicker[] = [];
+    const results = await Promise.all(
+      TRACKED_STOCKS.map(async (item) => {
+        try {
+          const encoded = encodeURIComponent(item.symbol);
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=10d`;
 
-    for (const item of YAHOO_SYMBOLS) {
-      try {
-        const encoded = encodeURIComponent(item.symbol);
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encoded}?interval=1d&range=10d`;
+          const response = await fetch(url, {
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+            },
+            signal: AbortSignal.timeout(8000),
+          });
 
-        const response = await fetch(url, {
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-          },
-          signal: AbortSignal.timeout(8000),
-        });
+          if (!response.ok) return null;
+          const json = await response.json();
+          const result = json?.chart?.result?.[0];
+          if (!result?.meta || !result?.timestamp) return null;
 
-        if (!response.ok) continue;
-        const json = await response.json();
-        const result = json?.chart?.result?.[0];
-        if (!result?.meta || !result?.timestamp) continue;
+          const meta = result.meta;
+          const timestamps: number[] = result.timestamp;
+          const closes: number[] = result.indicators?.quote?.[0]?.close || [];
 
-        const meta = result.meta;
-        const timestamps: number[] = result.timestamp;
-        const closes: number[] = result.indicators?.quote?.[0]?.close || [];
+          const validData = timestamps
+            .map((t: number, i: number) => ({ time: t, close: closes[i] }))
+            .filter((d: any) => d.close != null)
+            .slice(-8);
 
-        // Filter out null close prices and get last 8 valid days
-        const validData = timestamps
-          .map((t: number, i: number) => ({ time: t, close: closes[i] }))
-          .filter((d: any) => d.close != null)
-          .slice(-8);
+          if (validData.length < 2) return null;
 
-        if (validData.length < 2) continue;
+          const sparkline = validData.map((d: any) => d.close);
+          const price = meta.regularMarketPrice || sparkline[sparkline.length - 1];
+          const prevClose = meta.previousClose || meta.chartPreviousClose || sparkline[sparkline.length - 2];
 
-        const sparkline = validData.map((d: any) => d.close);
-        const price = meta.regularMarketPrice || sparkline[sparkline.length - 1];
-        const prevClose = meta.previousClose || meta.chartPreviousClose || sparkline[sparkline.length - 2];
+          const change24h = price && prevClose ? price - prevClose : 0;
+          const changePercent24h = price && prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
 
-        const change24h = price && prevClose ? price - prevClose : 0;
-        const changePercent24h = price && prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+          const firstClose = sparkline[0];
+          const lastClose = sparkline[sparkline.length - 1];
+          const change7d = lastClose - firstClose;
+          const changePercent7d = firstClose ? (change7d / firstClose) * 100 : 0;
 
-        const firstClose = sparkline[0];
-        const lastClose = sparkline[sparkline.length - 1];
-        const change7d = lastClose - firstClose;
-        const changePercent7d = firstClose ? (change7d / firstClose) * 100 : 0;
+          return {
+            symbol: item.display,
+            name: item.name,
+            price,
+            change24h,
+            changePercent24h,
+            change7d,
+            changePercent7d,
+            volume: meta.regularMarketVolume || 0,
+            high24h: meta.regularMarketDayHigh || price,
+            low24h: meta.regularMarketDayLow || price,
+            sparkline7d: sparkline,
+            type: 'stock' as const,
+            groupKey: item.groupKey,
+            groupLabel: item.groupLabel,
+          };
+        } catch (e) {
+          logger.error(`[Market] Yahoo fetch failed for ${item.symbol}`, e);
+          return null;
+        }
+      }),
+    );
 
-        results.push({
-          symbol: item.display,
-          name: item.name,
-          price,
-          change24h,
-          changePercent24h,
-          change7d,
-          changePercent7d,
-          volume: 0,
-          high24h: meta.regularMarketDayHigh || price,
-          low24h: meta.regularMarketDayLow || price,
-          sparkline7d: sparkline,
-          type: 'stock',
-        });
-      } catch (e) {
-        logger.error(`[Market] Yahoo fetch failed for ${item.symbol}`, e);
-      }
-    }
+    const filteredResults = results.filter(Boolean) as MarketTicker[];
 
-    if (results.length === 0) {
+    if (filteredResults.length === 0) {
       return this.fetchAlphaVantageStocks();
     }
 
-    return results;
+    return filteredResults;
   }
 
   private async fetchAlphaVantageStocks(): Promise<MarketTicker[]> {
@@ -293,5 +291,3 @@ export class MarketService {
 export function createMarketService(): MarketService {
   return new MarketService();
 }
-
-export const marketService = createMarketService();

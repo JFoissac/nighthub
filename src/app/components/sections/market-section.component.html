@@ -70,33 +70,35 @@
               }
             </div>
           }
-          @if (store.stocks().length) {
-            <div class="px-3 pt-3 pb-1 border-t border-[#1E1E2E]"><span class="font-label-caps text-[9px] text-text-muted">INDICES &amp; ETFS</span></div>
-            <div class="grid grid-cols-2 gap-2 px-2 pb-2">
-              @for (ticker of store.stocks(); track ticker.symbol) {
-                <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)">
-                  <div class="flex items-center justify-between mb-1.5">
-                    <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
-                    <span class="font-label-caps text-[8px] text-text-muted truncate max-w-[60%]">{{ ticker.name }}</span>
-                  </div>
-                  @if (ticker.sparkline7d?.length) {
-                    <div class="mb-1.5">
-                      <svg class="w-full h-8" viewBox="0 0 100 32" preserveAspectRatio="none">
-                        <polyline fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
-                          stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"
-                          [attr.points]="sparklinePoints(ticker.sparkline7d || [], 100, 32)"></polyline>
-                      </svg>
+          @if (store.groupedStocks().length) {
+            @for (group of store.groupedStocks(); track group.key) {
+              <div class="px-3 pt-3 pb-1 border-t border-[#1E1E2E]"><span class="font-label-caps text-[9px] text-text-muted">{{ group.label }}</span></div>
+              <div class="grid grid-cols-2 gap-2 px-2 pb-2">
+                @for (ticker of group.tickers; track ticker.symbol) {
+                  <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
+                      <span class="font-label-caps text-[8px] text-text-muted truncate max-w-[60%]">{{ ticker.name }}</span>
                     </div>
-                  }
-                  <div class="flex items-end justify-between">
-                    <span class="font-mono text-[13px] text-text-primary font-bold">{{ formatStockPrice(ticker.price) }}</span>
-                    <span class="font-mono text-[9px]" [class.text-green-400]="ticker.changePercent24h >= 0" [class.text-red-400]="ticker.changePercent24h < 0">
-                      {{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%
-                    </span>
+                    @if (ticker.sparkline7d?.length) {
+                      <div class="mb-1.5">
+                        <svg class="w-full h-8" viewBox="0 0 100 32" preserveAspectRatio="none">
+                          <polyline fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
+                            stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"
+                            [attr.points]="sparklinePoints(ticker.sparkline7d || [], 100, 32)"></polyline>
+                        </svg>
+                      </div>
+                    }
+                    <div class="flex items-end justify-between">
+                      <span class="font-mono text-[13px] text-text-primary font-bold">{{ formatStockPrice(ticker.price) }}</span>
+                      <span class="font-mono text-[9px]" [class.text-green-400]="ticker.changePercent24h >= 0" [class.text-red-400]="ticker.changePercent24h < 0">
+                        {{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%
+                      </span>
+                    </div>
                   </div>
-                </div>
-              }
-            </div>
+                }
+              </div>
+            }
           }
         }
 
@@ -169,67 +171,69 @@
             }
           }
 
-          @if (store.stocks().length) {
-            <div class="px-3 pt-3 pb-1 border-t border-[#1E1E2E]"><span class="font-label-caps text-[9px] text-text-muted">INDICES &amp; ETFS</span></div>
-            <div class="px-4 py-1.5 flex items-center text-[8px] font-label-caps text-text-muted opacity-50">
-              <span class="flex-1 min-w-0">TICKER / NAME</span>
-              <span class="w-20 text-right">PRICE</span>
-              <span class="w-14 text-right">24H</span>
-              <span class="w-14 text-right">7D</span>
-            </div>
-            @for (ticker of store.stocks(); track ticker.symbol) {
-              <div (click)="toggleExpand(ticker)">
-                <div class="px-4 py-2 border-b border-[#1E1E2E]/50 hover:bg-[#131318]/30 transition-colors flex items-center cursor-pointer">
-                  <div class="flex-1 min-w-0">
-                    <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
-                    <span class="font-label-caps text-[9px] text-text-muted truncate ml-2 hidden sm:inline">{{ ticker.name }}</span>
+          @if (store.groupedStocks().length) {
+            @for (group of store.groupedStocks(); track group.key) {
+              <div class="px-3 pt-3 pb-1 border-t border-[#1E1E2E]"><span class="font-label-caps text-[9px] text-text-muted">{{ group.label }}</span></div>
+              <div class="px-4 py-1.5 flex items-center text-[8px] font-label-caps text-text-muted opacity-50">
+                <span class="flex-1 min-w-0">TICKER / NAME</span>
+                <span class="w-20 text-right">PRICE</span>
+                <span class="w-14 text-right">24H</span>
+                <span class="w-14 text-right">7D</span>
+              </div>
+              @for (ticker of group.tickers; track ticker.symbol) {
+                <div (click)="toggleExpand(ticker)">
+                  <div class="px-4 py-2 border-b border-[#1E1E2E]/50 hover:bg-[#131318]/30 transition-colors flex items-center cursor-pointer">
+                    <div class="flex-1 min-w-0">
+                      <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
+                      <span class="font-label-caps text-[9px] text-text-muted truncate ml-2 hidden sm:inline">{{ ticker.name }}</span>
+                    </div>
+                    <span class="w-20 text-right font-mono text-[11px] text-text-primary">{{ formatStockPrice(ticker.price) }}</span>
+                    <span class="w-14 text-right font-mono text-[10px] px-1.5 py-0.5 rounded"
+                      [class.text-green-400]="ticker.change24h >= 0" [class.bg-green-400/10]="ticker.change24h >= 0"
+                      [class.text-red-400]="ticker.change24h < 0" [class.bg-red-400/10]="ticker.change24h < 0">
+                      {{ ticker.change24h >= 0 ? '+' : '' }}{{ ticker.change24h.toFixed(2) }}
+                    </span>
+                    <span class="w-14 text-right font-mono text-[10px]"
+                      [class.text-green-400]="ticker.changePercent7d >= 0" [class.text-red-400]="ticker.changePercent7d < 0">
+                      {{ ticker.changePercent7d !== 0 ? (ticker.changePercent7d >= 0 ? '+' : '') + ticker.changePercent7d.toFixed(2) + '%' : '—' }}
+                    </span>
                   </div>
-                  <span class="w-20 text-right font-mono text-[11px] text-text-primary">{{ formatStockPrice(ticker.price) }}</span>
-                  <span class="w-14 text-right font-mono text-[10px] px-1.5 py-0.5 rounded"
-                    [class.text-green-400]="ticker.change24h >= 0" [class.bg-green-400/10]="ticker.change24h >= 0"
-                    [class.text-red-400]="ticker.change24h < 0" [class.bg-red-400/10]="ticker.change24h < 0">
-                    {{ ticker.change24h >= 0 ? '+' : '' }}{{ ticker.change24h.toFixed(2) }}
-                  </span>
-                  <span class="w-14 text-right font-mono text-[10px]"
-                    [class.text-green-400]="ticker.changePercent7d >= 0" [class.text-red-400]="ticker.changePercent7d < 0">
-                    {{ ticker.changePercent7d !== 0 ? (ticker.changePercent7d >= 0 ? '+' : '') + ticker.changePercent7d.toFixed(2) + '%' : '—' }}
-                  </span>
-                </div>
-                @if (expanded()?.symbol === ticker.symbol) {
-                  <div class="px-4 py-3 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80">
-                    @if (ticker.sparkline7d?.length) {
-                      <div class="mb-3">
-                        <svg class="w-full h-16" viewBox="0 0 200 64" preserveAspectRatio="none">
-                          <defs>
-                            <linearGradient [attr.id]="'grad-'+ticker.symbol" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0.3"></stop>
-                              <stop offset="100%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0"></stop>
-                            </linearGradient>
-                          </defs>
-                          <polygon [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.points]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></polygon>
-                          <polyline fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
-                            stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
-                            [attr.points]="sparklinePoints(ticker.sparkline7d || [], 200, 64)"></polyline>
-                        </svg>
-                      </div>
-                    }
-                    <div class="grid grid-cols-3 gap-x-4 gap-y-1.5 text-[9px] font-label-caps">
-                      <div class="text-text-muted">Price</div>
-                      <div class="col-span-2 text-text-primary text-right font-mono">${{ formatStockPrice(ticker.price) }}</div>
-                      <div class="text-text-muted">24h Change</div>
-                      <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
-                        {{ ticker.change24h >= 0 ? '+' : '' }}${{ Math.abs(ticker.change24h).toFixed(2) }} ({{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%)
-                      </div>
-                      @if (ticker.changePercent7d !== 0) {
-                        <div class="text-text-muted">7d Change</div>
-                        <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change7d >= 0" [class.text-red-400]="ticker.change7d < 0">
-                          {{ ticker.change7d >= 0 ? '+' : '' }}${{ Math.abs(ticker.change7d).toFixed(2) }} ({{ ticker.changePercent7d >= 0 ? '+' : '' }}{{ ticker.changePercent7d.toFixed(2) }}%)
+                  @if (expanded()?.symbol === ticker.symbol) {
+                    <div class="px-4 py-3 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80">
+                      @if (ticker.sparkline7d?.length) {
+                        <div class="mb-3">
+                          <svg class="w-full h-16" viewBox="0 0 200 64" preserveAspectRatio="none">
+                            <defs>
+                              <linearGradient [attr.id]="'grad-'+ticker.symbol" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0.3"></stop>
+                                <stop offset="100%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0"></stop>
+                              </linearGradient>
+                            </defs>
+                            <polygon [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.points]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></polygon>
+                            <polyline fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
+                              stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
+                              [attr.points]="sparklinePoints(ticker.sparkline7d || [], 200, 64)"></polyline>
+                          </svg>
                         </div>
                       }
+                      <div class="grid grid-cols-3 gap-x-4 gap-y-1.5 text-[9px] font-label-caps">
+                        <div class="text-text-muted">Price</div>
+                        <div class="col-span-2 text-text-primary text-right font-mono">${{ formatStockPrice(ticker.price) }}</div>
+                        <div class="text-text-muted">24h Change</div>
+                        <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
+                          {{ ticker.change24h >= 0 ? '+' : '' }}${{ Math.abs(ticker.change24h).toFixed(2) }} ({{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%)
+                        </div>
+                        @if (ticker.changePercent7d !== 0) {
+                          <div class="text-text-muted">7d Change</div>
+                          <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change7d >= 0" [class.text-red-400]="ticker.change7d < 0">
+                            {{ ticker.change7d >= 0 ? '+' : '' }}${{ Math.abs(ticker.change7d).toFixed(2) }} ({{ ticker.changePercent7d >= 0 ? '+' : '' }}{{ ticker.changePercent7d.toFixed(2) }}%)
+                          </div>
+                        }
+                      </div>
                     </div>
-                  </div>
-                }
-              </div>
+                  }
+                </div>
+              }
             }
           }
         }
