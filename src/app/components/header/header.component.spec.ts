@@ -44,11 +44,11 @@ describe('HeaderComponent', () => {
     expect(compiled.textContent).toContain('NIGHTHUB');
   });
 
-  it('should expose options and sources actions without the old stats strip', () => {
+  it('should expose refresh, options and sources actions without the old stats strip', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('button[aria-label="Options"]')).toBeTruthy();
     expect(compiled.querySelector('button[aria-label="Sources"]')).toBeTruthy();
-    expect(compiled.querySelector('button[aria-label="Actualiser"]')).toBeFalsy();
+    expect(compiled.querySelector('button[aria-label="Refresh dashboard"]')).toBeTruthy();
     expect(compiled.textContent).not.toContain('VID:');
     expect(compiled.textContent).not.toContain('NEWS:');
     expect(compiled.textContent).not.toContain('TWEETS:');

@@ -45,6 +45,36 @@ import { UserPreferences } from '../../models';
 
       <div class="flex items-center gap-3">
         <button
+          (click)="openRefresh.emit()"
+          class="flex items-center gap-1.5 px-2 py-1 rounded border border-[#1E1E2E] text-text-muted hover:text-primary hover:border-primary/60 transition-all"
+          [class.opacity-70]="isRefreshing()"
+          [attr.aria-busy]="isRefreshing()"
+          aria-label="Refresh dashboard"
+        >
+          @if (isRefreshing()) {
+            <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+              <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+            </svg>
+          } @else {
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+              <path d="M21 3v6h-6"/>
+            </svg>
+          }
+          <span class="font-label-caps text-[10px]">
+            @if (isRefreshing()) {
+              REFRESHING
+            } @else if (refreshStatus() === 'updated' && lastUpdatedLabel()) {
+              UPDATED {{ lastUpdatedLabel() }}
+            } @else if (refreshStatus() === 'error') {
+              RETRY
+            } @else {
+              REFRESH
+            }
+          </span>
+        </button>
+        <button
           (click)="toggleOled()"
           class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
           [title]="isOled() ? 'Disable OLED mode' : 'Enable OLED mode'"
@@ -92,10 +122,14 @@ export class HeaderComponent implements OnInit, OnDestroy {
   weatherCondition = input<string>('');
 
   streamCount = input<number>(0);
+  isRefreshing = input<boolean>(false);
+  refreshStatus = input<'idle' | 'refreshing' | 'updated' | 'error'>('idle');
+  lastUpdatedLabel = input<string>('');
   openOptions = output<void>();
   openSources = output<void>();
   openWeather = output<void>();
   openStreamList = output<void>();
+  openRefresh = output<void>();
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
 

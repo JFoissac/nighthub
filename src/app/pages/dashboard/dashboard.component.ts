@@ -50,10 +50,14 @@ import { MarketStore } from '../../stores/market.store';
         (openSources)="showSources.set(true)"
         (openWeather)="showWeather.set(true)"
         (openStreamList)="showStreamList.set(true)"
+        (openRefresh)="refreshDashboard()"
         [weatherTemp]="dashboardData()?.weather?.days?.[0]?.temp ?? null"
         [weatherCity]="dashboardData()?.weather?.city || ''"
         [weatherCondition]="dashboardData()?.weather?.days?.[0]?.condition || ''"
         [streamCount]="streamsStore.count()"
+        [isRefreshing]="isRefreshing()"
+        [refreshStatus]="refreshStatus()"
+        [lastUpdatedLabel]="lastUpdatedLabel()"
       ></app-header>
 
       @if (showWeather()) {
@@ -151,6 +155,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   dashboardData = signal<DashboardData | null>(null);
   isLoading = signal(true);
   isLive = signal(false);
+  isRefreshing = signal(false);
+  refreshStatus = signal<'idle' | 'refreshing' | 'updated' | 'error'>('idle');
+  lastUpdatedLabel = signal('');
   showOptions = signal(false);
   showSources = signal(false);
   showWeather = signal(false);
@@ -176,11 +183,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private weatherRefreshInterval: ReturnType<typeof setInterval> | null = null;
+  private refreshBadgeTimeout: ReturnType<typeof setTimeout> | null = null;
 
   ngOnDestroy() {
     this.stopStoreAutoRefreshes();
     if (this.weatherRefreshInterval) {
       clearInterval(this.weatherRefreshInterval);
+    }
+    if (this.refreshBadgeTimeout) {
+      clearTimeout(this.refreshBadgeTimeout);
     }
   }
 
@@ -223,6 +234,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.marketStore.setItems(data.market || []);
     this.reconcileSelectedStream(data.streams || []);
     this.dashboardData.set(data);
+    this.lastUpdatedLabel.set(this.formatUpdatedLabel(data.refreshedAt));
     this.isLoading.set(false);
   }
 
@@ -328,6 +340,33 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.startStoreAutoRefreshes();
   }
 
+  refreshDashboard() {
+    if (this.isRefreshing()) return;
+
+    this.isRefreshing.set(true);
+    this.refreshStatus.set('refreshing');
+    this.setSectionLoading(true);
+
+    this.apiService.refreshAll().subscribe({
+      next: () => {
+        this.apiService.getDashboard().subscribe({
+          next: (data) => {
+            this.applyDashboardData(data);
+            this.finishRefresh('updated');
+          },
+          error: () => {
+            this.setSectionLoading(false);
+            this.finishRefresh('error');
+          },
+        });
+      },
+      error: () => {
+        this.setSectionLoading(false);
+        this.finishRefresh('error');
+      },
+    });
+  }
+
   onFeedAdded(feedUrl: string) {
     this.apiService.getPreferences().subscribe({
       next: (prefs) => {
@@ -348,6 +387,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
           },
         });
       },
+    });
+  }
+
+  private finishRefresh(status: 'updated' | 'error') {
+    this.isRefreshing.set(false);
+    this.refreshStatus.set(status);
+
+    if (this.refreshBadgeTimeout) {
+      clearTimeout(this.refreshBadgeTimeout);
+    }
+
+    this.refreshBadgeTimeout = setTimeout(() => {
+      this.refreshStatus.set('idle');
+    }, 4000);
+  }
+
+  private formatUpdatedLabel(value: Date | string | null | undefined): string {
+    if (!value) return '';
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
     });
   }
 }

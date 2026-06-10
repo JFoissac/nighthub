@@ -40,6 +40,7 @@ const createMockStore = () => {
     crypto: signal([]),
     stocks: signal([]),
     market: signal([]),
+    groupedStocks: signal([]),
     hasError: signal(false),
     loading: signal(false),
     error: signal(null),
@@ -133,6 +134,7 @@ describe('DashboardComponent', () => {
         youtubeRefreshInterval: 30,
       })),
       savePreferences: jest.fn().mockReturnValue(of({})),
+      refreshAll: jest.fn().mockReturnValue(of({})),
       refreshNews: jest.fn().mockReturnValue(of({})),
       getNews: jest.fn().mockReturnValue(of([])),
       getTrumpTweets: jest.fn().mockReturnValue(of([])),
@@ -286,5 +288,66 @@ describe('DashboardComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('app-settings-options')).toBeFalsy();
     expect(fixture.nativeElement.querySelector('app-settings-sources')).toBeTruthy();
+  });
+
+  it('refreshes in background without clearing visible data or closing the selected stream panel', () => {
+    const initialStream = createStream();
+    const refreshedStream = createStream({ viewerCount: 456, title: 'Live coding session refreshed' });
+    const refreshRequest = new Subject<any>();
+    const refreshedDashboard = {
+      videos: [{ id: 'video-1', title: 'Updated video' }],
+      streams: [refreshedStream],
+      news: [{ id: 'news-1', title: 'Updated news' }],
+      trump: [{ id: 'trump-1', content: 'Updated post' }],
+      market: [{ symbol: 'NVDA', type: 'stock', price: 1200 }],
+      weather: { city: 'Caen', days: [{ temp: 22, condition: 'Sunny' }] },
+      refreshedAt: new Date(),
+    };
+
+    mockVideosStore.setItems([{ id: 'video-0', title: 'Existing video' }]);
+    mockNewsStore.setItems([{ id: 'news-0', title: 'Existing news' }]);
+    mockTrumpStore.setItems([{ id: 'trump-0', content: 'Existing post' }]);
+    mockStreamsStore.setItems([initialStream]);
+    mockMarketStore.setItems([{ symbol: 'BTC', type: 'crypto', price: 1 }]);
+    component.dashboardData.set({
+      videos: [{ id: 'video-0', title: 'Existing video' }],
+      streams: [initialStream],
+      news: [{ id: 'news-0', title: 'Existing news' }],
+      trump: [{ id: 'trump-0', content: 'Existing post' }],
+      market: [{ symbol: 'BTC', type: 'crypto', price: 1 }],
+      weather: { city: 'Caen', days: [{ temp: 18, condition: 'Cloudy' }] },
+      refreshedAt: new Date('2026-04-25T10:00:00.000Z'),
+    });
+    component.onStreamSelect(initialStream);
+    mockApiService.refreshAll.mockReturnValueOnce(refreshRequest.asObservable());
+    mockApiService.getDashboard.mockReturnValueOnce(of(refreshedDashboard));
+    fixture.detectChanges();
+
+    const refreshButton = fixture.nativeElement.querySelector('button[aria-label="Refresh dashboard"]') as HTMLButtonElement | null;
+    expect(refreshButton).toBeTruthy();
+
+    refreshButton?.click();
+    fixture.detectChanges();
+
+    expect(mockApiService.refreshAll).toHaveBeenCalledTimes(1);
+    expect(mockVideosStore.isLoading()).toBe(true);
+    expect(mockNewsStore.isLoading()).toBe(true);
+    expect(mockTrumpStore.isLoading()).toBe(true);
+    expect(mockStreamsStore.isLoading()).toBe(true);
+    expect(mockMarketStore.isLoading()).toBe(true);
+    expect(mockVideosStore.videos()[0]?.title).toBe('Existing video');
+    expect(mockNewsStore.news()[0]?.title).toBe('Existing news');
+    expect(component.selectedStream()?.id).toBe('stream-a');
+    expect(fixture.debugElement.query(By.directive(StreamPlayerPanelComponent))).toBeTruthy();
+
+    refreshRequest.next({ ok: true });
+    refreshRequest.complete();
+    fixture.detectChanges();
+
+    expect(mockApiService.getDashboard).toHaveBeenCalledTimes(1);
+    expect(mockVideosStore.videos()[0]?.title).toBe('Updated video');
+    expect(mockNewsStore.news()[0]?.title).toBe('Updated news');
+    expect(component.selectedStream()?.viewerCount).toBe(456);
+    expect(component.selectedStream()?.title).toBe('Live coding session refreshed');
   });
 });
