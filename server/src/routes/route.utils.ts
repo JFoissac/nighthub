@@ -2,18 +2,37 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { PAGINATION } from '../config/constants';
 
+const limitSchema = z.preprocess((value) => {
+  const parsed =
+    typeof value === 'string'
+      ? Number.parseInt(value, 10)
+      : typeof value === 'number'
+        ? value
+        : PAGINATION.DEFAULT_LIMIT;
+
+  if (Number.isNaN(parsed)) {
+    return PAGINATION.DEFAULT_LIMIT;
+  }
+
+  return Math.min(Math.max(parsed, 1), PAGINATION.MAX_LIMIT);
+}, z.number().int());
+
+const citySchema = z.preprocess((value) => {
+  if (typeof value !== 'string') {
+    return 'Caen';
+  }
+
+  return value.trim().substring(0, 50);
+}, z.string().regex(/^[a-zA-Z0-9\s\-_À-ÿ]+$/).catch('Caen'));
+
 export const validateLimit = (limit: any): number => {
-  const parsed = parseInt(limit, 10);
-  if (isNaN(parsed) || parsed < 1) return PAGINATION.DEFAULT_LIMIT;
-  if (parsed > PAGINATION.MAX_LIMIT) return PAGINATION.MAX_LIMIT;
-  return parsed;
+  const parsed = limitSchema.safeParse(limit);
+  return parsed.success ? parsed.data : PAGINATION.DEFAULT_LIMIT;
 };
 
 export const validateCity = (city: any): string => {
-  if (typeof city !== 'string' || !/^[a-zA-Z0-9\s\-_À-ÿ]+$/.test(city)) {
-    return 'Caen';
-  }
-  return city.substring(0, 50);
+  const parsed = citySchema.safeParse(city);
+  return parsed.success ? parsed.data : 'Caen';
 };
 
 export function validateBody<T extends z.ZodTypeAny>(schema: T) {
