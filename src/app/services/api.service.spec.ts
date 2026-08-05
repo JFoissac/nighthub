@@ -38,7 +38,7 @@ describe('ApiService', () => {
     service.getDashboard().subscribe((data) => {
       expect(data).toEqual(mockData);
     });
-    const req = httpTesting.expectOne('http://localhost:3000/api/dashboard');
+    const req = httpTesting.expectOne('http://localhost:3001/api/dashboard');
     expect(req.request.method).toBe('GET');
     req.flush(mockData);
   });
@@ -47,7 +47,7 @@ describe('ApiService', () => {
     service.getStreams().subscribe((data) => {
       expect(data).toEqual([]);
     });
-    const req = httpTesting.expectOne('http://localhost:3000/api/streams');
+    const req = httpTesting.expectOne('http://localhost:3001/api/streams');
     expect(req.request.method).toBe('GET');
     req.flush([]);
   });
@@ -56,7 +56,7 @@ describe('ApiService', () => {
     service.getVideos().subscribe((data) => {
       expect(data).toEqual([]);
     });
-    const req = httpTesting.expectOne('http://localhost:3000/api/videos?limit=20');
+    const req = httpTesting.expectOne('http://localhost:3001/api/videos?limit=20');
     expect(req.request.method).toBe('GET');
     req.flush([]);
   });
@@ -66,7 +66,7 @@ describe('ApiService', () => {
       expect(data).toEqual([]);
     });
     const req = httpTesting.expectOne(
-      'http://localhost:3000/api/news?limit=20'
+      'http://localhost:3001/api/news?limit=20'
     );
     expect(req.request.method).toBe('GET');
     req.flush([]);
@@ -78,7 +78,7 @@ describe('ApiService', () => {
       expect(data).toBeNull();
     });
     const req = httpTesting.expectOne(
-      'http://localhost:3000/api/preferences'
+      'http://localhost:3001/api/preferences'
     );
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(prefs);
@@ -90,7 +90,7 @@ describe('ApiService', () => {
       expect(data).toEqual({ feedUrl: 'https://example.com/feed.xml' });
     });
     const req = httpTesting.expectOne(
-      'http://localhost:3000/api/sites/detect-feed'
+      'http://localhost:3001/api/sites/detect-feed'
     );
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ url: 'https://example.com' });
