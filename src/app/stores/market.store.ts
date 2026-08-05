@@ -90,7 +90,7 @@ export const MarketStore = signalStore(
       this.stopAutoRefresh();
       store._api.getPreferences().subscribe({
         next: (prefs) => {
-          const minutes = prefs.marketRefreshInterval ?? 60;
+          const minutes = prefs.marketRefreshInterval ?? 1;
           const ms = Math.max(5000, minutes * 60 * 1000);
           store._timer = setInterval(() => this.reload(), ms);
         },

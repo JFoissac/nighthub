@@ -83,7 +83,7 @@ export const NewsStore = signalStore(
       this.stopAutoRefresh();
       store._api.getPreferences().subscribe({
         next: (prefs) => {
-          const minutes = prefs.newsRefreshInterval ?? 30;
+          const minutes = prefs.newsRefreshInterval ?? 5;
           const ms = Math.max(5000, minutes * 60 * 1000);
           store._timer = setInterval(() => this.reload(), ms);
         },

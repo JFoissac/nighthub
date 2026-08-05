@@ -14,6 +14,7 @@ import { StreamsSectionComponent } from '../../components/sections/streams-secti
 import { NewsSectionComponent } from '../../components/sections/news-section.component';
 import { TrumpSectionComponent } from '../../components/sections/trump-section.component';
 import { ApiService, DashboardData } from '../../services/api.service';
+import { ToastService } from '../../services/toast.service';
 import { TwitchStream, YoutubeVideo } from '../../models';
 import { VideosStore } from '../../stores/videos.store';
 import { NewsStore } from '../../stores/news.store';
@@ -146,7 +147,12 @@ import { MarketStore } from '../../stores/market.store';
   `,
 })
 export class DashboardComponent implements OnInit, OnDestroy {
+  private static readonly RETRY_DELAYS_MS = [2000, 5000, 10000];
+  private static readonly MAX_RETRIES = 3;
+  private static readonly DEFAULT_GLOBAL_REFRESH_MS = 5 * 60 * 1000;
+
   private apiService = inject(ApiService);
+  private toastService = inject(ToastService);
 
   readonly videosStore = inject(VideosStore);
   readonly newsStore = inject(NewsStore);
@@ -191,9 +197,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private weatherRefreshInterval: ReturnType<typeof setInterval> | null = null;
   private refreshBadgeTimeout: ReturnType<typeof setTimeout> | null = null;
+  private retryTimeout: ReturnType<typeof setTimeout> | null = null;
+  private globalRefreshTimer: ReturnType<typeof setInterval> | null = null;
 
   ngOnDestroy() {
     this.stopStoreAutoRefreshes();
+    this.cancelPendingRetry();
     if (this.weatherRefreshInterval) {
       clearInterval(this.weatherRefreshInterval);
     }
@@ -270,7 +279,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   loadDashboard() {
-    this.setSectionLoading(true);
+    this.cancelPendingRetry();
+    // Only show skeletons when there is nothing to display yet. If the stores
+    // already hold data (e.g. manual refresh after a first successful load),
+    // refresh silently so existing sections do not flash back to skeletons.
+    if (this.areStoresEmpty()) {
+      this.setSectionLoading(true);
+    }
+    this.fetchDashboardWithRetry(0);
+  }
+
+  private fetchDashboardWithRetry(attempt: number) {
     this.apiService.getDashboardStream(() => undefined).subscribe({
       next: (data) => {
         this.applyDashboardData(data);
@@ -283,13 +302,42 @@ export class DashboardComponent implements OnInit, OnDestroy {
             this.startStoreAutoRefreshes();
           },
           error: () => {
-            this.setSectionLoading(false);
-            this.isLoading.set(false);
-            this.startStoreAutoRefreshes();
+            if (attempt < DashboardComponent.MAX_RETRIES) {
+              // Backoff: 2s, 5s, 10s between attempts.
+              const delay = DashboardComponent.RETRY_DELAYS_MS[attempt];
+              this.retryTimeout = setTimeout(() => {
+                this.retryTimeout = null;
+                this.fetchDashboardWithRetry(attempt + 1);
+              }, delay);
+            } else {
+              // Give up on skeletons but keep per-section auto-refresh running;
+              // sections keep their own polling and can recover on their own.
+              this.setSectionLoading(false);
+              this.isLoading.set(false);
+              this.startStoreAutoRefreshes();
+              this.toastService.error('Dashboard refresh failed. Automatic retries will continue.');
+            }
           }
         });
       }
     });
+  }
+
+  private areStoresEmpty(): boolean {
+    return (
+      this.videosStore.count() === 0 &&
+      this.newsStore.count() === 0 &&
+      this.trumpStore.count() === 0 &&
+      this.streamsStore.count() === 0 &&
+      this.marketStore.count() === 0
+    );
+  }
+
+  private cancelPendingRetry() {
+    if (this.retryTimeout) {
+      clearTimeout(this.retryTimeout);
+      this.retryTimeout = null;
+    }
   }
 
   private setSectionLoading(loading: boolean) {
@@ -312,6 +360,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.streamsStore.startAutoRefresh();
     this.videosStore.startAutoRefresh();
     this.startWeatherRefresh();
+    this.startGlobalRefresh();
   }
 
   private stopStoreAutoRefreshes() {
@@ -325,6 +374,45 @@ export class DashboardComponent implements OnInit, OnDestroy {
       clearInterval(this.weatherRefreshInterval);
       this.weatherRefreshInterval = null;
     }
+    if (this.globalRefreshTimer) {
+      clearInterval(this.globalRefreshTimer);
+      this.globalRefreshTimer = null;
+    }
+  }
+
+  private startGlobalRefresh() {
+    if (this.globalRefreshTimer) {
+      clearInterval(this.globalRefreshTimer);
+      this.globalRefreshTimer = null;
+    }
+    // Global silent refresh: pulls the aggregated /dashboard snapshot
+    // (cache-first on the backend) without touching section skeletons or the
+    // refresh badge. Per-store auto-refreshes keep running independently, so
+    // this never spams the market endpoint.
+    this.apiService.getPreferences().subscribe({
+      next: (prefs) => {
+        // refreshInterval is expressed in minutes (default 30 in settings).
+        const minutes = prefs.refreshInterval && prefs.refreshInterval > 0
+          ? prefs.refreshInterval
+          : 5;
+        const ms = Math.max(DashboardComponent.DEFAULT_GLOBAL_REFRESH_MS, minutes * 60 * 1000);
+        this.globalRefreshTimer = setInterval(() => this.silentGlobalRefresh(), ms);
+      },
+      error: () => {
+        this.globalRefreshTimer = setInterval(() => this.silentGlobalRefresh(), DashboardComponent.DEFAULT_GLOBAL_REFRESH_MS);
+      },
+    });
+  }
+
+  private silentGlobalRefresh() {
+    this.apiService.getDashboard().subscribe({
+      next: (data) => this.applyDashboardData(data),
+      error: (err) => {
+        // Keep whatever data is already displayed; per-store auto-refreshes
+        // keep trying independently.
+        console.warn('Global dashboard refresh failed:', err);
+      },
+    });
   }
 
   private startWeatherRefresh() {
@@ -353,6 +441,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   refreshDashboard() {
     if (this.isRefreshing()) return;
 
+    this.cancelPendingRetry();
     this.isRefreshing.set(true);
     this.refreshStatus.set('refreshing');
     this.setSectionLoading(true);

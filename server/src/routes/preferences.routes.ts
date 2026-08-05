@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.client';
-import { youtubeService } from '../services/backend.runtime';
+import { aggregatorService, youtubeService } from '../services/backend.runtime';
 import { validateBody } from './route.utils';
 
 const router = Router();
@@ -72,6 +72,9 @@ async function savePreferences(req: Request, res: Response) {
     } else {
       await prisma.userPreference.create({ data });
     }
+    // Preferences changed: drop the cached dashboard snapshot so the next
+    // load reflects the new settings (city, feeds, criticality, ...).
+    aggregatorService.invalidateDashboardCache();
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Failed to save preferences' });

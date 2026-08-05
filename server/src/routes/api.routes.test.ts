@@ -74,6 +74,8 @@ vi.mock('../services/backend.runtime', () => ({
   },
   aggregatorService: {
     getDashboardData: vi.fn(),
+    getDashboardSnapshot: vi.fn().mockReturnValue(null),
+    invalidateDashboardCache: vi.fn(),
     refreshAll: vi.fn(),
     refreshTwitch: vi.fn(),
     start: vi.fn(),

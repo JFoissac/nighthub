@@ -847,8 +847,19 @@ export class YoutubeService {
   /**
    * Pre-warm the cache at server startup. Returns when complete.
    * Use sparingly - this is slow.
+   * Skips the network fetch entirely when the DB cache was refreshed recently.
    */
   async preWarmCache(): Promise<void> {
+    const freshSince = new Date(Date.now() - 60 * 60 * 1000);
+    const freshVideos = await prisma.youtubeVideo.count({
+      where: { fetchedAt: { gte: freshSince } },
+    });
+
+    if (freshVideos > 0) {
+      logger.info('[YouTube] Cache already fresh, skipping pre-warm', { freshVideos });
+      return;
+    }
+
     logger.info('[YouTube] Pre-warming cache...');
     const start = Date.now();
     await this.fetchAndCacheLatestVideos();

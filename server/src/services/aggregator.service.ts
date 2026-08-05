@@ -33,8 +33,32 @@ export type AggregatorServiceDeps = {
 export class AggregatorService {
   private isShuttingDown = false;
   private cronJobs: { stop: () => void } | null = null;
+  private dashboardCache: { data: any; fetchedAt: number } | null = null;
+  private dashboardRebuildInFlight: Promise<any> | null = null;
+
+  static readonly DASHBOARD_CACHE_TTL_MS = 30_000;
+  static readonly SOURCE_TIMEOUT_MS = 5_000;
 
   constructor(private readonly deps: AggregatorServiceDeps) {}
+
+  private static withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Source timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  }
+
+  /** Returns the current dashboard snapshot without any freshness check (may be stale). */
+  getDashboardSnapshot(): any | null {
+    return this.dashboardCache?.data ?? null;
+  }
+
+  /** Forces the next getDashboardData() to rebuild the snapshot. */
+  invalidateDashboardCache(): void {
+    this.dashboardCache = null;
+  }
 
   start(): void {
     if (this.cronJobs) {
@@ -58,6 +82,8 @@ export class AggregatorService {
 
   async refreshAll(): Promise<void> {
     try {
+      // Invalidate the dashboard snapshot so the next GET rebuilds with fresh data.
+      this.invalidateDashboardCache();
       const tasks = [
         { name: 'weather', promise: this.deps.weatherService.getWeeklyForecast('Caen') },
         { name: 'news', promise: this.deps.newsService.fetchAiNews() },
@@ -171,6 +197,32 @@ export class AggregatorService {
   }
 
   async getDashboardData(onProgress?: (step: string) => void): Promise<any> {
+    const now = Date.now();
+
+    // Fast path: serve the fresh in-memory snapshot without touching services.
+    if (this.dashboardCache && now - this.dashboardCache.fetchedAt < AggregatorService.DASHBOARD_CACHE_TTL_MS) {
+      onProgress?.('Done');
+      return this.dashboardCache.data;
+    }
+
+    // Stale-while-revalidate: a stale snapshot is served immediately and the
+    // rebuild happens in the background, so the dashboard never blocks.
+    if (this.dashboardCache) {
+      if (!this.dashboardRebuildInFlight) {
+        this.dashboardRebuildInFlight = this.rebuildDashboard(onProgress).finally(() => {
+          this.dashboardRebuildInFlight = null;
+        });
+      }
+      onProgress?.('Done');
+      return this.dashboardCache.data;
+    }
+
+    // No snapshot yet (first load): wait for the rebuild, bounded by per-source
+    // timeouts so it can never stall the response for long.
+    return this.rebuildDashboard(onProgress);
+  }
+
+  private async rebuildDashboard(onProgress?: (step: string) => void): Promise<any> {
     try {
       const { prisma } = await import('../db/prisma.client');
       const prefs = await prisma.userPreference.findFirst();
@@ -180,14 +232,18 @@ export class AggregatorService {
       onProgress?.('Loading weather...');
       onProgress?.('Loading streams, videos, news...');
 
+      // Every external source is bounded by a hard timeout so a blocked
+      // network can never stall the dashboard for long.
+      const source = (promise: Promise<any>) => AggregatorService.withTimeout(promise, AggregatorService.SOURCE_TIMEOUT_MS);
+
       const [weather, streams, videos, news, trump, youtubeLives, market] = await Promise.allSettled([
-        this.deps.weatherService.getWeeklyForecast(weatherCity),
-        this.deps.twitchService.getLiveStreamsFast(20),
-        this.deps.youtubeService.getLatestVideos(20),
-        this.deps.newsService.getCachedNews(20),
-        this.deps.trumpService.getCachedTrumpTweets(20),
-        this.deps.youtubeService.getCachedLiveStreams(10),
-        this.deps.marketService.getLiveMarketData(),
+        source(this.deps.weatherService.getWeeklyForecast(weatherCity)),
+        source(this.deps.twitchService.getLiveStreamsFast(20)),
+        source(this.deps.youtubeService.getLatestVideos(20)),
+        source(this.deps.newsService.getCachedNews(20)),
+        source(this.deps.trumpService.getCachedTrumpTweets(20)),
+        source(this.deps.youtubeService.getCachedLiveStreams(10)),
+        source(this.deps.marketService.getLiveMarketData()),
       ]);
 
       onProgress?.('Done');
@@ -222,7 +278,7 @@ export class AggregatorService {
         })),
       ];
 
-      return {
+      const data = {
         weather: weatherData,
         market: marketData,
         streams: mergedStreams,
@@ -231,6 +287,9 @@ export class AggregatorService {
         trump: trumpData,
         refreshedAt: new Date(),
       };
+
+      this.dashboardCache = { data, fetchedAt: Date.now() };
+      return data;
     } catch (error) {
       logger.error('Error getting dashboard data', error);
       return {

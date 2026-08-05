@@ -162,15 +162,46 @@ function isNoiseOnly(content: string): boolean {
   return false;
 }
 
+const BOOST_REGEX_CACHE = new Map<string, RegExp>();
+const MAX_RUNTIME_BOOSTS = 5000;
+const runtimeBoostCache = new WeakMap<TrumpScoringProfile, Array<[string, number]>>();
+
+function getCompiledPhraseRegex(phrase: string): RegExp {
+  let re = BOOST_REGEX_CACHE.get(phrase);
+  if (!re) {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\$&');
+    re = new RegExp(`\\b${escaped}\\b`, 'gi');
+    BOOST_REGEX_CACHE.set(phrase, re);
+  }
+  return re;
+}
+
 function countOccurrences(text: string, phrase: string): number {
   if (!phrase) return 0;
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const matches = text.match(new RegExp(`\\b${escaped}\\b`, 'gi'));
+  const matches = text.match(getCompiledPhraseRegex(phrase));
   return matches ? matches.length : 0;
 }
 
 function hasPhrase(text: string, phrase: string): boolean {
   return countOccurrences(text, phrase) > 0;
+}
+
+/**
+ * Runtime scoring only checks the strongest learned boosts. The trained
+ * profile can hold ~200k phrases; matching every tweet against all of them
+ * meant hundreds of thousands of regex compiles+matches per dashboard load
+ * (minutes of blocked event loop). Top-N by |weight| keeps the signal while
+ * keeping the dashboard fast. Sorted once per profile (memoized).
+ */
+function getRuntimeBoosts(profile: TrumpScoringProfile): Array<[string, number]> {
+  let cached = runtimeBoostCache.get(profile);
+  if (!cached) {
+    cached = Object.entries(profile.learnedBoosts)
+      .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+      .slice(0, MAX_RUNTIME_BOOSTS);
+    runtimeBoostCache.set(profile, cached);
+  }
+  return cached;
 }
 
 function getTopBoosts(record: TrumpCorpusEntry): number {
@@ -228,6 +259,19 @@ export function createDefaultTrumpScoringProfile(): TrumpScoringProfile {
   };
 }
 
+/**
+ * Cooperative yield to the event loop (setImmediate). Lets heavy background
+ * loops (Trump training) keep /health and other requests responsive.
+ */
+export function yieldToEventLoop(): Promise<void> {
+  return new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+export interface CooperativeBuildOptions {
+  /** Yield to the event loop when this many ms have elapsed since the last yield. */
+  yieldEveryMs?: number;
+}
+
 export function mergeTrumpScoringProfiles(...profiles: TrumpScoringProfile[]): TrumpScoringProfile {
   const merged: Record<string, number> = {};
 
@@ -241,25 +285,50 @@ export function mergeTrumpScoringProfiles(...profiles: TrumpScoringProfile[]): T
   return { learnedBoosts: merged };
 }
 
-export function buildTrumpScoringProfile(records: TrumpCorpusEntry[]): TrumpScoringProfile {
-  const boostAccumulator = new Map<string, number>();
+/**
+ * Async variant of mergeTrumpScoringProfiles that yields periodically so the
+ * event loop is never blocked for long. Semantics are identical to the sync
+ * version (same per-entry clamp range [-2.5, 3], same order).
+ */
+export async function mergeTrumpScoringProfilesCooperative(
+  profiles: TrumpScoringProfile[],
+  options: CooperativeBuildOptions = {},
+): Promise<TrumpScoringProfile> {
+  const yieldEveryMs = options.yieldEveryMs ?? 25;
+  const merged: Record<string, number> = {};
+  let lastYieldAt = Date.now();
 
-  for (const record of records) {
-    const normalized = normalizeContent(record.content || '').toLowerCase();
-    if (!normalized) continue;
-
-    const weight = getTopBoosts(record);
-    if (weight === 0) continue;
-
-    for (const phrase of collectFeaturePhrases(normalized)) {
-      boostAccumulator.set(phrase, (boostAccumulator.get(phrase) || 0) + weight);
-    }
-
-    for (const phrase of extractLearnedPhrases(normalized)) {
-      boostAccumulator.set(phrase, (boostAccumulator.get(phrase) || 0) + (weight * 0.7));
+  for (const profile of profiles) {
+    for (const [phrase, weight] of Object.entries(profile.learnedBoosts || {})) {
+      const total = (merged[phrase] || 0) + weight;
+      merged[phrase] = Math.max(-2.5, Math.min(3, Number(total.toFixed(2))));
+      if (Date.now() - lastYieldAt >= yieldEveryMs) {
+        await yieldToEventLoop();
+        lastYieldAt = Date.now();
+      }
     }
   }
 
+  return { learnedBoosts: merged };
+}
+
+function accumulateRecord(record: TrumpCorpusEntry, boostAccumulator: Map<string, number>): void {
+  const normalized = normalizeContent(record.content || '').toLowerCase();
+  if (!normalized) return;
+
+  const weight = getTopBoosts(record);
+  if (weight === 0) return;
+
+  for (const phrase of collectFeaturePhrases(normalized)) {
+    boostAccumulator.set(phrase, (boostAccumulator.get(phrase) || 0) + weight);
+  }
+
+  for (const phrase of extractLearnedPhrases(normalized)) {
+    boostAccumulator.set(phrase, (boostAccumulator.get(phrase) || 0) + (weight * 0.7));
+  }
+}
+
+function finalizeBoostAccumulator(boostAccumulator: Map<string, number>): TrumpScoringProfile {
   const learnedBoosts: Record<string, number> = {};
   for (const [phrase, total] of boostAccumulator.entries()) {
     const clamped = Math.max(-1.5, Math.min(2.5, Number(total.toFixed(2))));
@@ -269,6 +338,40 @@ export function buildTrumpScoringProfile(records: TrumpCorpusEntry[]): TrumpScor
   }
 
   return { learnedBoosts };
+}
+
+export function buildTrumpScoringProfile(records: TrumpCorpusEntry[]): TrumpScoringProfile {
+  const boostAccumulator = new Map<string, number>();
+
+  for (const record of records) {
+    accumulateRecord(record, boostAccumulator);
+  }
+
+  return finalizeBoostAccumulator(boostAccumulator);
+}
+
+/**
+ * Async variant of buildTrumpScoringProfile that yields periodically so the
+ * event loop is never blocked for long. Produces the exact same profile as the
+ * sync version (same accumulation order, same finalization).
+ */
+export async function buildTrumpScoringProfileCooperative(
+  records: TrumpCorpusEntry[],
+  options: CooperativeBuildOptions = {},
+): Promise<TrumpScoringProfile> {
+  const yieldEveryMs = options.yieldEveryMs ?? 25;
+  const boostAccumulator = new Map<string, number>();
+  let lastYieldAt = Date.now();
+
+  for (const record of records) {
+    accumulateRecord(record, boostAccumulator);
+    if (Date.now() - lastYieldAt >= yieldEveryMs) {
+      await yieldToEventLoop();
+      lastYieldAt = Date.now();
+    }
+  }
+
+  return finalizeBoostAccumulator(boostAccumulator);
 }
 
 function scoreTariffs(text: string): number {
@@ -431,7 +534,7 @@ export function scoreTrumpContent(
     if (hasPhrase(lower, phrase)) score += weight;
   }
 
-  for (const [phrase, boost] of Object.entries(profile.learnedBoosts)) {
+  for (const [phrase, boost] of getRuntimeBoosts(profile)) {
     if (hasPhrase(lower, phrase)) score += boost;
   }
 

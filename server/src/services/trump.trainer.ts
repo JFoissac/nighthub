@@ -1,10 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import type { TrumpCorpusEntry, TrumpScoringProfile } from './trump.scoring';
 import {
-  buildTrumpScoringProfile,
+  buildTrumpScoringProfileCooperative,
   createDefaultTrumpScoringProfile,
   mergeTrumpScoringProfiles,
+  mergeTrumpScoringProfilesCooperative,
+  yieldToEventLoop,
 } from './trump.scoring';
 import {
   loadTrumpArchiveCorpusFromPath,
@@ -70,9 +73,10 @@ function inferCriticality(content: string): number | null {
   return null;
 }
 
-export function buildInferredTrumpTrainingCorpus(records: TrumpCorpusEntry[]): TrumpCorpusEntry[] {
+export async function buildInferredTrumpTrainingCorpus(records: TrumpCorpusEntry[]): Promise<TrumpCorpusEntry[]> {
   const inferred: TrumpCorpusEntry[] = [];
   const seen = new Set<string>();
+  let lastYieldAt = Date.now();
 
   for (const record of records) {
     const content = normalizeContent(record.content || '');
@@ -93,12 +97,18 @@ export function buildInferredTrumpTrainingCorpus(records: TrumpCorpusEntry[]): T
       criticality,
       isBreaking: criticality >= 8,
     });
+
+    // Yield periodically so a large archive never freezes the event loop.
+    if (Date.now() - lastYieldAt >= 25) {
+      await yieldToEventLoop();
+      lastYieldAt = Date.now();
+    }
   }
 
   return inferred;
 }
 
-function buildAnchorPhraseProfile(records: TrumpCorpusEntry[]): TrumpScoringProfile {
+async function buildAnchorPhraseProfile(records: TrumpCorpusEntry[]): Promise<TrumpScoringProfile> {
   const learnedBoosts: Record<string, number> = {};
 
   const lowSignalAnchors = [
@@ -118,7 +128,15 @@ function buildAnchorPhraseProfile(records: TrumpCorpusEntry[]): TrumpScoringProf
     { phrase: 'secretary of state has resigned', weight: 1.2 },
   ];
 
-  const corpusText = records.map((record) => normalizeContent(record.content).toLowerCase());
+  const corpusText: string[] = [];
+  let lastYieldAt = Date.now();
+  for (const record of records) {
+    corpusText.push(normalizeContent(record.content).toLowerCase());
+    if (Date.now() - lastYieldAt >= 25) {
+      await yieldToEventLoop();
+      lastYieldAt = Date.now();
+    }
+  }
 
   for (const anchor of lowSignalAnchors) {
     if (corpusText.some((text) => text.includes(anchor.phrase))) {
@@ -161,7 +179,18 @@ export class TrumpTrainingService {
   start(): void {
     if (this.timer) return;
 
-    void this.trainNow('startup');
+    // A persisted snapshot is authoritative for live scoring — no need to
+    // re-train from the raw archive at startup. Re-training still runs on the
+    // interval below so the profile refreshes in the background over time.
+    if (this.lastSnapshot) {
+      this.log.info('[TrumpTrainer] Persisted snapshot found, skipping startup training', {
+        trainedAt: this.lastSnapshot.trainedAt,
+        snapshotPath: this.snapshotPath,
+      } as any);
+    } else {
+      void this.trainNow('startup');
+    }
+
     this.timer = setInterval(() => {
       void this.trainNow('interval');
     }, this.intervalMs);
@@ -200,12 +229,21 @@ export class TrumpTrainingService {
       return this.lastSnapshot;
     }
 
+    // NOTE: loadTrumpArchiveCorpusFromPath parses the raw archive synchronously
+    // (readFileSync + CSV/JSON parse). For the 31.7MB CSV this is ~1s of
+    // uninterrupted work — it lives in trump.archive.ts (out of scope here) and
+    // only runs on a background re-train, never at startup when a snapshot
+    // exists. Every step after this yields to the event loop.
     const archiveRecords = loadTrumpArchiveCorpusFromPath(this.datasetPath);
-    const inferredCorpus = buildInferredTrumpTrainingCorpus(archiveRecords);
-    const profile = mergeTrumpScoringProfiles(
-      buildAnchorPhraseProfile(inferredCorpus),
-      buildTrumpScoringProfile(inferredCorpus),
-    );
+    await yieldToEventLoop();
+
+    const inferredCorpus = await buildInferredTrumpTrainingCorpus(archiveRecords);
+    await yieldToEventLoop();
+
+    const profile = await mergeTrumpScoringProfilesCooperative([
+      await buildAnchorPhraseProfile(inferredCorpus),
+      await buildTrumpScoringProfileCooperative(inferredCorpus),
+    ]);
 
     const snapshot: TrumpTrainingSnapshot = {
       trainedAt: new Date().toISOString(),
@@ -216,8 +254,8 @@ export class TrumpTrainingService {
       profile,
     };
 
-    mkdirSync(dirname(this.snapshotPath), { recursive: true });
-    writeFileSync(this.snapshotPath, JSON.stringify(snapshot, null, 2));
+    await mkdir(dirname(this.snapshotPath), { recursive: true });
+    await writeFile(this.snapshotPath, JSON.stringify(snapshot, null, 2));
 
     this.lastSnapshot = snapshot;
     this.persistedProfile = profile;

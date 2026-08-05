@@ -97,23 +97,37 @@ async function startServer() {
     await prisma.$connect();
     logger.info('Database connected', { url: config.database.url });
 
-    youtubeService.cleanOrphanChannelIds().catch((e: unknown) => logger.error('Clean orphan channel IDs failed', e));
-
-    // Fire-and-forget cache warm-up (runs in background)
-    youtubeService.preWarmCache().catch((e: unknown) => logger.warn('Pre-warm failed', { error: e }));
-    trumpTrainingService.start();
-
-    aggregatorService.refreshAll();
-    logger.info('Aggregator initial data fetch started');
-
+    // Listen FIRST so the server accepts connections and /health responds
+    // immediately. All heavy background work (cache pre-warm, Trump training,
+    // aggregator refresh) is scheduled AFTER the server is listening.
     const server = app.listen(config.port, () => {
       logger.info('Server started', {
         port: config.port,
         env: config.nodeEnv,
         corsOrigins: config.cors.origins,
       });
+
+      // --- Background tasks (never block boot or the event loop) ---
+      youtubeService.cleanOrphanChannelIds().catch((e: unknown) => logger.error('Clean orphan channel IDs failed', e));
+
+      // Fire-and-forget cache warm-up (skips itself when the DB cache is fresh)
+      youtubeService.preWarmCache().catch((e: unknown) => logger.warn('Pre-warm failed', { error: e }));
+
+      // Trump training: loads the persisted snapshot synchronously in its
+      // constructor (fast), re-trains asynchronously in the background with
+      // periodic yields — never freezes the event loop.
+      trumpTrainingService.start();
+
+      aggregatorService.refreshAll().catch((e: unknown) => logger.error('Aggregator initial data fetch failed', e));
+
+      // Warm the dashboard snapshot in the background so the first page load
+      // is served instantly from cache (the Angular dev server takes ~12s to
+      // build anyway — the snapshot is ready by the time the browser connects).
+      aggregatorService.getDashboardData().catch((e: unknown) => logger.warn('Dashboard pre-warm failed', { error: e }));
+
       aggregatorService.start();
       logger.info('Aggregator cron jobs started');
+      logger.info('Background tasks scheduled (clean-orphans, pre-warm, trump training, aggregator)');
     });
 
     // Track connections for graceful shutdown

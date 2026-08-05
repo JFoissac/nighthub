@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const rawCorsOrigins = process.env.CORS_ORIGINS || 'http://localhost:4200,http://127.0.0.1:4200';
+const rawCorsOrigins = process.env.CORS_ORIGINS || 'http://localhost:4200,http://127.0.0.1:4200,http://localhost:4201,http://127.0.0.1:4201';
 const allowedOrigins = rawCorsOrigins.split(',').map((o) => o.trim()).filter(Boolean);
 
 export const config = {

@@ -81,7 +81,7 @@ export const StreamsStore = signalStore(
       this.stopAutoRefresh();
       store._api.getPreferences().subscribe({
         next: (prefs) => {
-          const minutes = prefs.streamsRefreshInterval ?? 5;
+          const minutes = prefs.streamsRefreshInterval ?? 1.5;
           const ms = Math.max(5000, minutes * 60 * 1000);
           store._timer = setInterval(() => this.reload(), ms);
         },

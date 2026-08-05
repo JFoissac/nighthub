@@ -83,7 +83,7 @@ export const VideosStore = signalStore(
       this.stopAutoRefresh();
       store._api.getPreferences().subscribe({
         next: (prefs) => {
-          const minutes = prefs.youtubeRefreshInterval ?? 30;
+          const minutes = prefs.youtubeRefreshInterval ?? 5;
           const ms = Math.max(5000, minutes * 60 * 1000);
           store._timer = setInterval(() => this.reload(), ms);
         },

@@ -34,14 +34,31 @@ async function getDashboardStream(_req: Request, res: Response) {
     sendEvent({ ts: Date.now() }, 'heartbeat');
   }, 4000);
 
+  // 1. Instant paint: serve the current snapshot (even stale) right away so
+  //    the UI renders data in <100ms instead of showing skeletons.
+  const cached = aggregatorService.getDashboardSnapshot();
+  if (cached) {
+    sendEvent(cached, 'dashboard');
+  }
+
+  // 2. Rebuild when the snapshot is missing or stale, then push the fresh
+  //    version. Progress events only make sense when nothing is shown yet.
   try {
     const data = await aggregatorService.getDashboardData((step: string) => {
-      sendEvent({ step }, 'progress');
+      if (!cached) sendEvent({ step }, 'progress');
     });
-    sendEvent(data, 'dashboard');
+
+    const cachedRefreshedAt = cached ? new Date(cached.refreshedAt).getTime() : null;
+    const dataRefreshedAt = new Date(data.refreshedAt).getTime();
+
+    if (!cached || dataRefreshedAt !== cachedRefreshedAt) {
+      sendEvent(data, 'dashboard');
+    }
   } catch (error) {
     logger.error('Dashboard SSE failed', error, { route: '/dashboard/stream' });
-    sendEvent({ error: 'Failed to fetch dashboard data' }, 'error');
+    if (!cached) {
+      sendEvent({ error: 'Failed to fetch dashboard data' }, 'error');
+    }
   } finally {
     if (heartbeatId) clearInterval(heartbeatId);
     res.end();
@@ -50,7 +67,13 @@ async function getDashboardStream(_req: Request, res: Response) {
 
 async function refreshAll(_req: Request, res: Response) {
   try {
-    await aggregatorService.refreshAll();
+    // Fire-and-forget: the heavy work (YouTube, Twitch, Trump, news, weather)
+    // runs in the background; the client gets an immediate acknowledgment.
+    // The dashboard snapshot is invalidated by refreshAll itself and rebuilt
+    // lazily (stale-while-revalidate) on the next GET.
+    void aggregatorService.refreshAll().catch((error: unknown) => {
+      logger.error('Background refresh all failed', error, { route: '/refresh/all' });
+    });
     res.json({ success: true, message: 'Refresh initiated' });
   } catch (error) {
     logger.error('Refresh all failed', error, { route: '/refresh/all' });

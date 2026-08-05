@@ -109,7 +109,11 @@ export class ApiService {
   getDashboardStream(onProgress: (step: string) => void): Observable<DashboardData> {
     return new Observable(subscriber => {
       const es = new EventSource(`${this.baseUrl}/dashboard/stream`);
-      const SSE_TIMEOUT_MS = 5000;
+      // Server heartbeat is 4s and the timeout is re-armed on every
+      // heartbeat/progress event, so 30s only fires when the stream is
+      // genuinely stuck (e.g. server still booting). Was 5s, which failed
+      // whenever the first dashboard event took longer than that.
+      const SSE_TIMEOUT_MS = 30000;
       let done = false;
       let timeoutId: any;
 

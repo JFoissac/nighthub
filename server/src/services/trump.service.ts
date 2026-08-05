@@ -86,6 +86,9 @@ const SENTIMENT_POS = [
 ];
 
 export class TrumpService {
+  /** Memoized criticality scores per tweet id (scoring is expensive). */
+  private criticalityCache = new Map<string, number>();
+
   async fetchTrumpTweets(limit: number = 20): Promise<any[]> {
     await this.refreshScoringProfile();
     const fetchTarget = Math.max(limit, HISTORICAL_FETCH_TARGET);
@@ -547,10 +550,20 @@ export class TrumpService {
       });
       if (tweets.length > 0) {
         return tweets.map((tweet) => {
-          const criticality = this.scoreCriticality(tweet.content, {
-            likes: tweet.likes,
-            retweets: tweet.retweets,
-          });
+          // Scoring is expensive (tens of thousands of phrase checks): memoize
+          // per tweet id so repeated dashboard loads are free.
+          const cacheKey = String(tweet.id);
+          let criticality = this.criticalityCache.get(cacheKey);
+          if (criticality === undefined) {
+            criticality = this.scoreCriticality(tweet.content, {
+              likes: tweet.likes,
+              retweets: tweet.retweets,
+            });
+            if (this.criticalityCache.size > 2000) {
+              this.criticalityCache.clear();
+            }
+            this.criticalityCache.set(cacheKey, criticality);
+          }
 
           return annotateTrumpSeverity({
             ...tweet,
