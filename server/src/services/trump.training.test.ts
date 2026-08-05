@@ -17,4 +17,20 @@ describe('Trump training corpus', () => {
     expect(scoreTrumpContent('Thank you Michigan, incredible crowd tonight.', profile)).toBeLessThan(4);
     expect(scoreTrumpContent('Fake news is failing again, we are winning big.', profile)).toBeLessThan(4);
   });
+
+  it('reserves 10/10 for true world-alert scenarios', () => {
+    const profile = buildTrumpTrainedProfile();
+
+    expect(scoreTrumpContent('The Pentagon and Treasury are coordinating an immediate sanctions package.', profile)).toBeLessThan(10);
+    expect(scoreTrumpContent('Massive tariffs will hit foreign steel and auto imports if talks fail.', profile)).toBeLessThan(10);
+    expect(scoreTrumpContent('Troops are being deployed after the missile strike and our response is coming.', profile)).toBeLessThan(10);
+  });
+
+  it('pushes endorsements, export headlines and admin appointments down the scale', () => {
+    const profile = buildTrumpTrainedProfile();
+
+    expect(scoreTrumpContent('Record $327.1 Billion Exports Help Shrink U.S. Trade Deficit.', profile)).toBeLessThan(6);
+    expect(scoreTrumpContent('William Pulte will be taking over as Acting Director of National Intelligence.', profile)).toBeLessThan(7);
+    expect(scoreTrumpContent('Congressman William Timmons has my Complete and Total Endorsement for Re-Election.', profile)).toBeLessThan(4);
+  });
 });

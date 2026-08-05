@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { aggregatorService } from '../services/aggregator.service';
+import { aggregatorService, twitchService } from '../services/backend.runtime';
 import { validateLimit } from './route.utils';
 import { logger } from '../utils/logger';
 
@@ -70,7 +70,6 @@ async function refreshTwitch(_req: Request, res: Response) {
 
 async function getStreams(_req: Request, res: Response) {
   try {
-    const { twitchService } = await import('../services/twitch.service');
     const streams = await twitchService.getFollowedStreams();
     res.json(streams);
   } catch (error) {
@@ -81,7 +80,6 @@ async function getStreams(_req: Request, res: Response) {
 
 async function getFollows(req: Request, res: Response) {
   try {
-    const { twitchService } = await import('../services/twitch.service');
     const username = req.query.username as string;
     if (username) {
       const follows = await twitchService.getFollowsByProfile(username);

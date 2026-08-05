@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { FETCH_CONCURRENCY } from '../config/constants';
 
 vi.mock('../db/prisma.client', () => ({
   prisma: {
@@ -104,6 +105,37 @@ describe('YoutubeService', () => {
       expect(prisma.userPreference.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: { youtubeChannels: '@foo' } })
       );
+    });
+
+    it('removes orphaned handles and their cached channel IDs when the list changes', async () => {
+      const { prisma } = await import('../db/prisma.client');
+      (prisma.userPreference.findFirst as any).mockResolvedValue({
+        id: 'pref-1',
+        youtubeChannels: '@old,@keep',
+        youtubeChannelIds: 'UCbbbbbbbbbbbbbbbbbbbbbb,UCcccccccccccccccccccccc',
+      });
+      (prisma.youtubeVideo.findMany as any).mockResolvedValue([
+        { channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb', channelHandle: '@old' },
+      ]);
+
+      vi.spyOn(service, 'getChannelHandles').mockResolvedValue(['@old', '@keep']);
+      vi.spyOn(service, 'saveChannelIds').mockResolvedValue();
+      vi.spyOn(service as any, 'reconcileChannelIdsFromHandles').mockResolvedValue(['UCcccccccccccccccccccccc']);
+      vi.spyOn(service, 'resolveChannelId').mockImplementation(async (handle: string) => (
+        handle === '@keep' ? 'UCcccccccccccccccccccccc' : null
+      ));
+
+      await service.saveChannelHandles(['@keep']);
+
+      expect(prisma.youtubeVideo.deleteMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          OR: [
+            { channelHandle: { in: ['@old'] } },
+            { channelId: { in: ['UCbbbbbbbbbbbbbbbbbbbbbb'] } },
+          ],
+        },
+      });
+      expect(service.saveChannelIds).toHaveBeenCalledWith(['UCcccccccccccccccccccccc']);
     });
   });
 
@@ -328,6 +360,25 @@ describe('YoutubeService', () => {
       expect(prisma.youtubeVideo.deleteMany).toHaveBeenCalledWith({
         where: { channelId: { notIn: [storedId] } },
       });
+    });
+
+    it(`uses the configured RSS concurrency of ${FETCH_CONCURRENCY} channels per batch`, async () => {
+      const handles = Array.from({ length: FETCH_CONCURRENCY + 1 }, (_, i) => `@chan${i}`);
+      const { prisma } = await import('../db/prisma.client');
+      (prisma.userPreference.findFirst as any).mockResolvedValue({ id: '1', youtubeChannels: handles.join(',') });
+
+      vi.spyOn(service, 'getChannelHandles').mockResolvedValue(handles);
+      vi.spyOn(service, 'getChannelIds').mockResolvedValue([]);
+      vi.spyOn(service, 'resolveChannelId').mockImplementation(async (handle: string) => (
+        `UC${handle.slice(1).padEnd(22, 'a').slice(0, 22)}`
+      ));
+      vi.spyOn(service as any, 'fetchChannelVideos').mockResolvedValue([]);
+      const delaySpy = vi.spyOn(service as any, 'delay').mockResolvedValue(undefined);
+
+      await service.fetchAndCacheLatestVideos();
+
+      expect(delaySpy).toHaveBeenCalledTimes(1);
+      expect(delaySpy).toHaveBeenCalledWith(1200);
     });
   });
 

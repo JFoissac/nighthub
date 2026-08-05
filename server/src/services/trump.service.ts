@@ -7,6 +7,9 @@ import {
 } from './trump.scoring';
 import { buildTrumpTrainedProfile } from './trump.training';
 import { annotateTrumpSeverity, isTrumpBreaking } from './trump-severity';
+import { trumpTrainingService } from './trump.trainer';
+import { loadTrumpArchiveCorpusFromPath, resolveTrumpArchiveDatasetPath } from './trump.archive';
+import { scoreTrumpTextWeakly } from './trump.weak-scorer';
 
 const rssParser = new Parser({
   timeout: 10000,
@@ -24,12 +27,15 @@ const TRUMP_NITTER_URLS = [
 
 const TRUTHSOCIAL_API_URL = 'https://truthsocial.com/api/v1/accounts/107780257626128497/statuses';
 const SCRAPECREATORS_API_URL = 'https://api.scrapecreators.com/v1/truthsocial/user/posts';
+const HISTORICAL_FETCH_TARGET = 250;
+const PAGE_FETCH_SIZE = 40;
 
 /** Max 10 refreshes/day = minimum 144 min between API calls */
 const MIN_REFRESH_INTERVAL_MS = 144 * 60 * 1000;
 let lastRefreshedAt = 0;
 let lastScoringProfileLoadedAt = 0;
-let cachedScoringProfile: TrumpScoringProfile = buildTrumpTrainedProfile();
+let cachedScoringProfile: TrumpScoringProfile = buildTrumpTrainedProfile([], trumpTrainingService.getPersistedProfile());
+let cachedArchiveFallback: any[] | null = null;
 
 function getScrapeCreatorsApiKey(): string {
   return process.env.SCRAPECREATORS_API_KEY || '';
@@ -37,6 +43,14 @@ function getScrapeCreatorsApiKey(): string {
 
 function shouldRefresh(): boolean {
   return Date.now() - lastRefreshedAt >= MIN_REFRESH_INTERVAL_MS;
+}
+
+function shouldDebugTrumpPosts(): boolean {
+  return process.env.TRUMP_DEBUG_POSTS === 'true';
+}
+
+function shouldDisableArchiveFallback(): boolean {
+  return process.env.TRUMP_DISABLE_ARCHIVE_FALLBACK === 'true';
 }
 
 const CRITICAL_KEYWORDS = {
@@ -74,6 +88,7 @@ const SENTIMENT_POS = [
 export class TrumpService {
   async fetchTrumpTweets(limit: number = 20): Promise<any[]> {
     await this.refreshScoringProfile();
+    const fetchTarget = Math.max(limit, HISTORICAL_FETCH_TARGET);
 
     // Enforce max 10 refreshes/day — skip if data is recent
     if (!shouldRefresh()) {
@@ -85,10 +100,10 @@ export class TrumpService {
     const scrapeKey = getScrapeCreatorsApiKey();
     if (scrapeKey) {
       try {
-        const items = await this.fetchScrapeCreatorsPosts(limit, scrapeKey);
+        const items = await this.fetchScrapeCreatorsPosts(fetchTarget, scrapeKey);
         if (items.length > 0) {
           lastRefreshedAt = Date.now();
-          return items;
+          return items.slice(0, limit);
         }
       } catch (e) {
         logger.error('ScrapeCreators fetch failed, trying Truth Social direct', e);
@@ -97,10 +112,10 @@ export class TrumpService {
 
     // 2. Truth Social direct API
     try {
-      const items = await this.fetchTruthSocialPosts(limit);
+      const items = await this.fetchTruthSocialPosts(fetchTarget);
       if (items.length > 0) {
         lastRefreshedAt = Date.now();
-        return items;
+        return items.slice(0, limit);
       }
     } catch (e) {
       logger.error('Truth Social fetch failed, falling back to Nitter', e);
@@ -157,14 +172,57 @@ export class TrumpService {
     }
 
     logger.info('[Trump] ScrapeCreators fetch', { postCount: posts.length });
+    this.debugRawPosts('scrapecreators', posts);
     const analyzed = posts.map(post => this.analyzeTruthSocialPost(post));
     await this.cacheTrumpTweets(analyzed);
     return analyzed.sort((a, b) => b.criticality - a.criticality);
   }
 
   private async fetchTruthSocialPosts(limit: number = 20): Promise<any[]> {
-    const url = `${TRUTHSOCIAL_API_URL}?limit=${limit}&exclude_replies=true&with_muted=true`;
-    const response = await fetch(url, {
+    const posts = await this.fetchTruthSocialArchive(limit);
+    if (!Array.isArray(posts) || posts.length === 0) {
+      logger.warn('[Trump] Truth Social returned empty posts');
+      return [];
+    }
+
+    logger.info('[Trump] Truth Social fetch', { postCount: posts.length });
+    this.debugRawPosts('truthsocial', posts);
+
+    const analyzed = posts.map(post => this.analyzeTruthSocialPost(post));
+    await this.cacheTrumpTweets(analyzed);
+
+    return analyzed.sort((a, b) => b.criticality - a.criticality);
+  }
+
+  private async fetchTruthSocialArchive(targetCount: number): Promise<any[]> {
+    const posts: any[] = [];
+    let maxId: string | null = null;
+    let safety = 0;
+
+    while (posts.length < targetCount && safety < 12) {
+      const page = await this.fetchTruthSocialPage(Math.min(PAGE_FETCH_SIZE, targetCount - posts.length), maxId);
+      if (page.length === 0) break;
+
+      posts.push(...page);
+      const lastPost = page[page.length - 1];
+      maxId = lastPost?.id ? String(lastPost.id) : null;
+      safety += 1;
+
+      if (page.length < PAGE_FETCH_SIZE || !maxId) break;
+    }
+
+    return this.dedupePosts(posts).slice(0, targetCount);
+  }
+
+  private async fetchTruthSocialPage(limit: number, maxId: string | null): Promise<any[]> {
+    const params = new URLSearchParams({
+      limit: String(limit),
+      exclude_replies: 'true',
+      with_muted: 'true',
+    });
+    if (maxId) params.set('max_id', maxId);
+
+    const response = await fetch(`${TRUTHSOCIAL_API_URL}?${params.toString()}`, {
       headers: {
         'Accept': 'application/json',
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
@@ -177,25 +235,17 @@ export class TrumpService {
     }
 
     const posts: any[] = await response.json();
-    if (!Array.isArray(posts) || posts.length === 0) {
-      logger.warn('[Trump] Truth Social returned empty posts');
-      return [];
-    }
-
-    logger.info('[Trump] Truth Social fetch', { postCount: posts.length });
-
-    const analyzed = posts.map(post => this.analyzeTruthSocialPost(post));
-    await this.cacheTrumpTweets(analyzed);
-
-    return analyzed.sort((a, b) => b.criticality - a.criticality);
+    return Array.isArray(posts) ? posts : [];
   }
 
   private analyzeTruthSocialPost(post: any): any {
     const rawContent = post.content || post.text || post.content_text || '';
     const content = this.stripHtml(rawContent);
     const lower = content.toLowerCase();
+    const media = this.extractMedia(post);
+    const isImageOnly = content.length === 0 && media.kind === 'image';
 
-    const criticality = scoreTrumpContent(content, cachedScoringProfile, {
+    const criticality = this.scoreCriticality(content, {
       likes: post.favourites_count || post.favorites_count || post.likes_count || 0,
       retweets: post.reblogs_count || post.reposts_count || post.shares_count || 0,
     });
@@ -212,6 +262,7 @@ export class TrumpService {
     return annotateTrumpSeverity({
       tweetId,
       content,
+      rawContent,
       type,
       criticality,
       sentiment,
@@ -219,6 +270,11 @@ export class TrumpService {
       likes: post.favourites_count || post.favorites_count || post.likes_count || 0,
       retweets: post.reblogs_count || post.reposts_count || post.shares_count || 0,
       isBreaking,
+      source: 'truthsocial',
+      mediaUrls: media.urls.join('\n'),
+      mediaType: media.kind,
+      isImageOnly,
+      rawPayload: JSON.stringify(post),
       url: post.url || post.link || `https://truthsocial.com/@realDonaldTrump/posts/${postId}`,
       tweetDate: createdAt ? new Date(createdAt) : new Date(),
     });
@@ -240,7 +296,7 @@ export class TrumpService {
     const content = this.cleanContent(raw);
     const lower = content.toLowerCase();
 
-    const criticality = scoreTrumpContent(content, cachedScoringProfile, {
+    const criticality = this.scoreCriticality(content, {
       likes: 0,
       retweets: 0,
     });
@@ -258,6 +314,7 @@ export class TrumpService {
     return annotateTrumpSeverity({
       tweetId,
       content,
+      rawContent: raw,
       type,
       criticality,
       sentiment,
@@ -265,6 +322,11 @@ export class TrumpService {
       likes: 0,
       retweets: 0,
       isBreaking,
+      source: 'nitter-rss',
+      mediaUrls: '',
+      mediaType: '',
+      isImageOnly: false,
+      rawPayload: JSON.stringify(item),
       url: (item.link || '').replace('nitter.net', 'x.com').replace('/status/', '/status/'),
       tweetDate: item.pubDate ? new Date(item.pubDate) : new Date(),
     });
@@ -297,17 +359,20 @@ export class TrumpService {
           tweetDate: true,
           type: true,
           keywords: true,
-        },
-      });
+        } as any,
+      }) as any[];
 
-      cachedScoringProfile = buildTrumpTrainedProfile(corpus);
+      cachedScoringProfile = buildTrumpTrainedProfile(
+        corpus as any,
+        trumpTrainingService.getPersistedProfile(),
+      );
       lastScoringProfileLoadedAt = now;
       logger.info('[Trump] Scoring profile refreshed', { corpusSize: corpus.length });
     } catch (error) {
       logger.warn('[Trump] Failed to refresh scoring profile', {
         error: error instanceof Error ? error.message : String(error),
       });
-      cachedScoringProfile = buildTrumpTrainedProfile();
+      cachedScoringProfile = buildTrumpTrainedProfile([], trumpTrainingService.getPersistedProfile());
       lastScoringProfileLoadedAt = now;
     }
   }
@@ -334,10 +399,99 @@ export class TrumpService {
     ].filter(kw => lower.includes(kw));
   }
 
+  private extractMedia(post: any): { kind: string; urls: string[] } {
+    const attachments = Array.isArray(post?.media_attachments) ? post.media_attachments : [];
+    const urls = attachments
+      .map((attachment: any) => attachment?.url || attachment?.preview_url || attachment?.remote_url)
+      .filter((url: string | undefined): url is string => Boolean(url));
+    const kind = attachments[0]?.type || '';
+
+    return { kind, urls };
+  }
+
+  private dedupePosts(posts: any[]): any[] {
+    const seen = new Set<string>();
+    return posts.filter((post) => {
+      const id = String(post?.id || post?.post_id || post?.uri || '');
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  }
+
+  private debugRawPosts(source: string, posts: any[]): void {
+    if (!shouldDebugTrumpPosts()) return;
+
+    console.log(`[Trump][${source}] fetched ${posts.length} raw posts`);
+    posts.forEach((post, index) => {
+      console.log(`[Trump][${source}][${index}]`, JSON.stringify(post, null, 2));
+    });
+  }
+
+  private scoreCriticality(content: string, meta: { likes?: number; retweets?: number } = {}): number {
+    const weakScore = scoreTrumpTextWeakly(content);
+    const heuristicScore = scoreTrumpContent(content, cachedScoringProfile, meta);
+    const gap = Math.abs(heuristicScore - weakScore.score);
+
+    if (gap >= 4) {
+      return Math.max(0, Math.min(10, Math.round(((heuristicScore) + (2 * weakScore.score)) / 3)));
+    }
+
+    return Math.max(0, Math.min(10, Math.round((0.55 * weakScore.score) + (0.45 * heuristicScore))));
+  }
+
+  private getArchiveFallbackTweets(limit: number): any[] {
+    if (shouldDisableArchiveFallback()) return [];
+    if (!cachedArchiveFallback) {
+      const datasetPath = resolveTrumpArchiveDatasetPath();
+      if (!datasetPath) {
+        cachedArchiveFallback = [];
+      } else {
+        const records = loadTrumpArchiveCorpusFromPath(datasetPath);
+        cachedArchiveFallback = records
+          .filter((record) => record.content.trim().length > 0)
+          .slice(0, Math.max(100, limit))
+          .map((record, index) => this.analyzeArchiveRecord(record, index));
+      }
+    }
+
+    return cachedArchiveFallback.slice(0, limit);
+  }
+
+  private analyzeArchiveRecord(record: any, index: number): any {
+    const content = this.cleanContent(record.content || '');
+    const lower = content.toLowerCase();
+    const criticality = this.scoreCriticality(content, {
+      likes: record.likes || 0,
+      retweets: record.retweets || 0,
+    });
+    const tweetDate = record.tweetDate ? new Date(record.tweetDate) : new Date();
+
+    return annotateTrumpSeverity({
+      tweetId: `archive-${tweetDate.getTime()}-${index}`,
+      content,
+      rawContent: content,
+      type: this.classifyType(lower),
+      criticality,
+      sentiment: this.analyzeSentiment(lower),
+      keywords: this.extractKeywords(lower).slice(0, 5).join(','),
+      likes: record.likes || 0,
+      retweets: record.retweets || 0,
+      isBreaking: isTrumpBreaking(criticality),
+      source: 'local-archive',
+      mediaUrls: '',
+      mediaType: '',
+      isImageOnly: false,
+      rawPayload: JSON.stringify(record),
+      url: '#',
+      tweetDate,
+    });
+  }
+
   private async cacheTrumpTweets(tweets: any[]): Promise<void> {
-    // Purge old Nitter/mock data (> 7 days) before inserting fresh posts
+    // Purge old cached data (> 30 days) before inserting fresh posts
     try {
-      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const deleted = await prisma.trumpTweet.deleteMany({
         where: { tweetDate: { lt: cutoff } },
       });
@@ -350,31 +504,26 @@ export class TrumpService {
 
     for (const t of tweets) {
       try {
+        const data = {
+          content: t.content,
+          type: t.type,
+          criticality: t.criticality,
+          sentiment: t.sentiment,
+          keywords: t.keywords,
+          likes: t.likes,
+          retweets: t.retweets,
+          isBreaking: t.isBreaking,
+          url: t.url,
+          tweetDate: t.tweetDate,
+        };
+
         await prisma.trumpTweet.upsert({
           where: { tweetId: t.tweetId },
-          update: {
-            content: t.content,
-            type: t.type,
-            criticality: t.criticality,
-            sentiment: t.sentiment,
-            keywords: t.keywords,
-            likes: t.likes,
-            retweets: t.retweets,
-            isBreaking: t.isBreaking,
-            url: t.url,
-          },
+          update: data,
           create: {
             tweetId: t.tweetId,
+            ...data,
             content: t.content.substring(0, 1000),
-            type: t.type,
-            criticality: t.criticality,
-            sentiment: t.sentiment,
-            keywords: t.keywords,
-            likes: t.likes,
-            retweets: t.retweets,
-            isBreaking: t.isBreaking,
-            url: t.url,
-            tweetDate: t.tweetDate,
           },
         });
       } catch (e) {
@@ -387,19 +536,37 @@ export class TrumpService {
 
   async getCachedTrumpTweets(limit: number = 20): Promise<any[]> {
     try {
-      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const tweets = await prisma.trumpTweet.findMany({
-        where: { tweetDate: { gte: cutoff } },
+        where: {
+          tweetDate: { gte: cutoff },
+          content: { not: '' },
+        } as any,
         take: limit,
         orderBy: [{ tweetDate: 'desc' }],
       });
       if (tweets.length > 0) {
-        return tweets.map((tweet) => annotateTrumpSeverity(tweet));
+        return tweets.map((tweet) => {
+          const criticality = this.scoreCriticality(tweet.content, {
+            likes: tweet.likes,
+            retweets: tweet.retweets,
+          });
+
+          return annotateTrumpSeverity({
+            ...tweet,
+            criticality,
+            isBreaking: isTrumpBreaking(criticality),
+          });
+        });
       }
     } catch (e) {
       logger.error('Get cached trump tweets error', e);
     }
-    return [];
+    const fallback = this.getArchiveFallbackTweets(limit);
+    if (fallback.length > 0) {
+      logger.info('[Trump] Serving local archive fallback tweets', { count: fallback.length });
+    }
+    return fallback;
   }
 
   analyzeTweet(tweet: any): any {

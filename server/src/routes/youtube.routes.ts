@@ -1,15 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { youtubeService } from '../services/youtube.service';
+import { youtubeService } from '../services/backend.runtime';
+import { validateBody, validateLimit } from './route.utils';
 
 const router = Router();
-
-const validateLimit = (limit: any): number => {
-  const parsed = parseInt(limit, 10);
-  if (isNaN(parsed) || parsed < 1) return 20;
-  if (parsed > 100) return 100;
-  return parsed;
-};
 
 const youtubeImportListSchema = z.object({ channels: z.array(z.string()) });
 const youtubeImportTakeoutSchema = z.object({ channels: z.array(z.object({ channelId: z.string() })) });
@@ -17,18 +11,6 @@ const youtubeRemapSchema = z.object({
   handle: z.string().min(1),
   channelId: z.string().min(1),
 });
-
-function validateBody<T extends z.ZodTypeAny>(schema: T) {
-  return (req: Request, res: Response, next: Function): void => {
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten().fieldErrors });
-      return;
-    }
-    (req as any).validatedBody = parsed.data as z.infer<T>;
-    next();
-  };
-}
 
 async function getVideos(req: Request, res: Response) {
   try {

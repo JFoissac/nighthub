@@ -77,7 +77,7 @@ export interface ExtractedNewsArticle {
 export class ApiService {
   constructor(private http: HttpClient) {}
 
-  private baseUrl = 'http://localhost:3000/api';
+  private baseUrl = 'http://localhost:3001/api';
   isLoading = false;
   error: string | null = null;
 
@@ -93,7 +93,7 @@ export class ApiService {
   };
 
   getHealth(): Observable<any> {
-    return this.http.get('http://localhost:3000/health').pipe(
+    return this.http.get('http://localhost:3001/health').pipe(
       catchError(this.handleError)
     );
   }
@@ -217,7 +217,7 @@ export class ApiService {
   }
 
   getAuthStatus(): Observable<AuthStatus> {
-    return this.http.get<AuthStatus>('http://localhost:3000/api/auth/status').pipe(
+    return this.http.get<AuthStatus>('http://localhost:3001/api/auth/status').pipe(
       catchError(this.handleError)
     );
   }
@@ -228,7 +228,7 @@ export class ApiService {
     const left = (window.innerWidth - width) / 2;
     const top = (window.innerHeight - height) / 2;
     window.open(
-      'http://localhost:3000/api/auth/youtube',
+      'http://localhost:3001/api/auth/youtube',
       'YouTube OAuth',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
     );
@@ -240,14 +240,14 @@ export class ApiService {
     const left = (window.innerWidth - width) / 2;
     const top = (window.innerHeight - height) / 2;
     window.open(
-      'http://localhost:3000/api/auth/twitch',
+      'http://localhost:3001/api/auth/twitch',
       'Twitch OAuth',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
     );
   }
 
   logout(provider: 'youtube' | 'twitch'): Observable<any> {
-    return this.http.post('http://localhost:3000/api/auth/logout', { provider }).pipe(
+    return this.http.post('http://localhost:3001/api/auth/logout', { provider }).pipe(
       catchError(this.handleError)
     );
   }

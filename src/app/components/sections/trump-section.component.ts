@@ -1,7 +1,8 @@
-import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, inject, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TrumpItem } from '../../models';
 import { TrumpStore } from '../../stores/trump.store';
+import { ApiService } from '../../services/api.service';
 import { TrumpCardComponent } from '../trump/trump-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
 
@@ -62,6 +63,18 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
     </section>
   `,
 })
-export class TrumpSectionComponent {
+export class TrumpSectionComponent implements OnInit {
   readonly store = inject(TrumpStore);
+  private readonly api = inject(ApiService);
+
+  ngOnInit() {
+    window.setTimeout(() => {
+      if (this.store.count()) return;
+
+      this.api.getTrumpTweets(20).subscribe({
+        next: (items) => this.store.setItems(items),
+        error: () => this.store.setLoading(false),
+      });
+    });
+  }
 }

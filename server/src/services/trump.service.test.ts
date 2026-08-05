@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 // Mock Prisma before importing service
 vi.mock('../db/prisma.client', () => ({
@@ -6,6 +9,7 @@ vi.mock('../db/prisma.client', () => ({
     trumpTweet: {
       upsert: vi.fn().mockResolvedValue({}),
       findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   },
 }));
@@ -21,9 +25,20 @@ import { TrumpService } from './trump.service';
 
 describe('TrumpService', () => {
   let service: TrumpService;
+  let tempDir: string | null = null;
 
   beforeEach(() => {
+    process.env.TRUMP_DISABLE_ARCHIVE_FALLBACK = 'true';
     service = new TrumpService();
+  });
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = null;
+    }
+    delete process.env.TRUMP_DISABLE_ARCHIVE_FALLBACK;
+    delete process.env.TRUMP_ARCHIVE_DATASET_PATH;
   });
 
   describe('analyzeItem — criticality scoring', () => {
@@ -125,6 +140,23 @@ describe('TrumpService', () => {
     });
   });
 
+  describe('truth social payload enrichment', () => {
+    it('captures media urls and flags image-only posts', () => {
+      const result = (service as any).analyzeTruthSocialPost({
+        id: '123',
+        content: '',
+        media_attachments: [
+          { type: 'image', url: 'https://cdn.example.com/a.jpg', preview_url: 'https://cdn.example.com/p.jpg' },
+        ],
+      });
+
+      expect(result.mediaType).toBe('image');
+      expect(result.mediaUrls).toContain('https://cdn.example.com/a.jpg');
+      expect(result.isImageOnly).toBe(true);
+      expect(result.criticality).toBe(0);
+    });
+  });
+
   describe('URL transformation', () => {
     it('converts nitter URLs to x.com URLs', () => {
       const result = service.analyzeTweet({
@@ -154,6 +186,30 @@ describe('TrumpService', () => {
       const result = await service.getCachedTrumpTweets(10);
       expect(result).toHaveLength(1);
       expect(result[0].tweetId).toBe('abc');
+    });
+
+    it('falls back to the local archive when cache is empty', async () => {
+      tempDir = mkdtempSync(join(tmpdir(), 'trump-fallback-'));
+      const archivePath = join(tempDir, 'tweets.csv');
+      writeFileSync(
+        archivePath,
+        [
+          'date,text,platform,favorite_count,repost_count',
+          '"2025-12-31 21:54:21+00:00","Congratulations to everyone, great rally tonight, thank you!",Truth Social,10,2',
+          '"2025-12-31 20:55:30+00:00","We launch bomb on Iran and respond immediately with missiles.",Truth Social,1000,500',
+        ].join('\n'),
+      );
+      delete process.env.TRUMP_DISABLE_ARCHIVE_FALLBACK;
+      process.env.TRUMP_ARCHIVE_DATASET_PATH = archivePath;
+
+      const { prisma } = await import('../db/prisma.client');
+      (prisma.trumpTweet.findMany as any).mockResolvedValueOnce([]);
+
+      const result = await service.getCachedTrumpTweets(2);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].source).toBe('local-archive');
+      expect(result[1].criticality).toBeGreaterThanOrEqual(8);
     });
   });
 });

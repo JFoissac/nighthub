@@ -858,5 +858,3 @@ private async cacheNews(items: any[]): Promise<void> {
 export function createNewsService(): NewsService {
   return new NewsService();
 }
-
-export const newsService = createNewsService();

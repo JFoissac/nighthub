@@ -23,15 +23,10 @@ vi.mock('../db/prisma.client', () => ({
   },
 }));
 
-vi.mock('../services/weather.service', () => ({
+vi.mock('../services/backend.runtime', () => ({
   weatherService: {
     getWeeklyForecast: vi.fn(),
   },
-}));
-
-vi.mock('../services/news.service', () => ({
-  ARTICLE_EXTRACTION_FAILED: 'ARTICLE_EXTRACTION_FAILED',
-  ARTICLE_URL_NOT_ALLOWED: 'ARTICLE_URL_NOT_ALLOWED',
   newsService: {
     fetchAiNews: vi.fn(),
     getCachedNews: vi.fn(),
@@ -39,9 +34,6 @@ vi.mock('../services/news.service', () => ({
     validateFeedUrl: vi.fn(),
     extractArticleText: vi.fn(),
   },
-}));
-
-vi.mock('../services/youtube.service', () => ({
   youtubeService: {
     getLatestVideos: vi.fn(),
     getChannelHandles: vi.fn().mockResolvedValue([]),
@@ -61,45 +53,36 @@ vi.mock('../services/youtube.service', () => ({
       channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb',
     }),
   },
-}));
-
-vi.mock('../services/twitch.service', () => ({
   twitchService: {
     getFollowedStreams: vi.fn(),
     getFollows: vi.fn(),
     getFollowsByProfile: vi.fn(),
     importFollowsFromList: vi.fn(),
+    refreshLiveCacheLight: vi.fn(),
+    getLiveStreamsFast: vi.fn(),
+    getAuthUrl: vi.fn(),
+    exchangeCodeForTokens: vi.fn(),
+    isConnected: vi.fn(),
+    disconnect: vi.fn(),
   },
-}));
-
-vi.mock('../services/trump.service', () => ({
   trumpService: {
     fetchTrumpTweets: vi.fn(),
     getCachedTrumpTweets: vi.fn(),
   },
-}));
-
-vi.mock('../services/market.service', () => ({
   marketService: {
     getLiveMarketData: vi.fn(),
   },
-}));
-
-vi.mock('../services/aggregator.service', () => ({
   aggregatorService: {
     getDashboardData: vi.fn(),
     refreshAll: vi.fn(),
     refreshTwitch: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
   },
 }));
 
 import router from './api.routes';
-import { weatherService } from '../services/weather.service';
-import { newsService } from '../services/news.service';
-import { youtubeService } from '../services/youtube.service';
-import { twitchService } from '../services/twitch.service';
-import { trumpService } from '../services/trump.service';
-import { aggregatorService } from '../services/aggregator.service';
+import { weatherService, newsService, youtubeService, twitchService, trumpService, aggregatorService } from '../services/backend.runtime';
 import { prisma } from '../db/prisma.client';
 
 function getMountedPrefix(layer: any): string {

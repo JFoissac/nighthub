@@ -80,10 +80,65 @@ Couche 3 (fallback) : Piped / Invidious
 - Ou plus simple : ne pas persister les IDs résolus dans les préférences, les stocker dans une table dédiée `YoutubeChannel` avec relation handle → id + `lastResolvedAt`
 
 ### 4. Qualité backend
-- [ ] Extraire les routes Express monolithiques (`api.routes.ts` 324 lignes)
-- [ ] Sortir `node-cron` du constructeur de `AggregatorService`
-- [ ] Ajouter validation d'input (Zod) sur les routes
-- [ ] Remplacer les singletons manuels par des factories testables
+- [x] Extraire les routes Express monolithiques (`api.routes.ts` 324 lignes)
+- [x] Sortir `node-cron` du constructeur de `AggregatorService`
+- [x] Ajouter validation d'input (Zod) sur les routes
+- [x] Remplacer les singletons manuels restants par des factories testables
+- [x] Documenter le refactor backend dans `docs/BACKEND_REFACTOR.md`
+
+### 5. Refresh dashboard en arrière-plan
+- [x] Ajouter un bouton de refresh non bloquant sur le dashboard
+- [x] Rafraîchir les sections visibles en arrière-plan sans vider les listes
+- [x] Afficher un indicateur de chargement par section pendant le refresh
+- [x] Afficher un état "mis à jour" quand les nouvelles données sont arrivées
+- [x] Conserver la navigation et les panneaux ouverts pendant le refresh
+- [x] Ajouter les tests de non-régression sur le cycle refresh / rendu / stabilité UI
+
+### 6. Trump
+- [x] Revoir la criticité Trump
+- [x] Définir le bon seuil de déclenchement et l'impact sur l'affichage
+- [x] Réserver les `10/10` aux cas réellement critiques (guerre, frappes, sanctions massives, démissions majeures)
+- [x] Ajouter la remontée des payloads complets + métadonnées média (images, raw payload) pour audit/debug
+- [x] Mettre en place un entraînement de fond sur dataset historique avec snapshot JSON persistant
+
+**Flux retenu :**
+
+```
+Dataset historique local
+  → priorité: docs/djt_posts_dec2025.csv
+  → fallback: docs/tweets_01-08-2021.json
+
+Trainer de fond
+  → infère un corpus faible/bruité (posts bénins, économiques, nominations, alertes géopolitiques)
+  → calcule un profil appris
+  → persiste un snapshot JSON sur disque
+
+Scoring live
+  → charge le snapshot appris au démarrage
+  → fusionne ce profil avec le corpus manuel + les posts récents mis en cache
+  → n'analyse plus le dataset massif en ligne à chaque refresh
+```
+
+**Réglage criticité :**
+- `10/10` uniquement pour guerre/attaque/frappe/bombardement/blocage/sanctions extrêmes/tarifs massifs/démission top cabinet
+- pénalités fortes pour endorsements, télé-rallies, voter ID, record exports / trade deficit, nominations administratives
+- apprentissage négatif explicite sur les ancres de faux signaux récurrents
+
+### 7. Stocks
+- [x] Ajouter les gros tickers stocks au dashboard
+- [x] Couvrir au minimum les groupes suivants:
+  - [x] Magnificent 7
+  - [x] IA
+  - [x] Tech
+  - [x] Armement
+  - [x] Matières premières
+- [x] Définir le mapping des tickers et leurs catégories d'affichage
+- [x] Ajouter les tests de chargement et d'affichage des nouveaux groupes
+
+### 8. Nettoyage de référence et code mort
+- [x] Réduire `references/NowStreaming/` à un snapshot utile pour l'import Twitch
+- [x] Supprimer le clone Git embarqué et les assets de jeu non utilisés
+- [x] Nettoyer les imports/types manifestement inutilisés dans l'application et les tests
 
 ---
 
@@ -132,5 +187,5 @@ OPENWEATHERMAP_API_KEY=a74ad14a60941c71f4640e590912d3ac
 4. ✅ Implémentation solution YouTube hybride (RSS + API v3 + Piped fallback)
 5. ✅ Validation Zod sur les routes (middleware `validateBody`)
 6. ✅ Retry RSS avec jitter + fallback Piped pour les durées
-7. ⏳ Refactoring routes backend (extraction modulaire)
+7. ✅ Refactoring routes backend (extraction modulaire)
 8. ⏳ Intégration backend dans workspace package manager

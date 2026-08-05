@@ -18,7 +18,7 @@ export const CACHE_TTL = {
 } as const;
 
 // Fetch settings
-export const FETCH_CONCURRENCY = 8;
+export const FETCH_CONCURRENCY = 20;
 export const FETCH_BATCH_DELAY_MS = 1200;
 export const RESOLVE_BATCH_CONCURRENCY = 8;
 export const PIPED_BATCH_CONCURRENCY = 10;

@@ -27,6 +27,7 @@ model TrumpTweet {
   id           String   @id @default(cuid())
   tweetId      String   @unique
   content      String
+  rawContent   String   @default("")
   type         String   @default("tweet")
   criticality  Int      @default(0)
   sentiment    String   @default("neutral")
@@ -34,6 +35,11 @@ model TrumpTweet {
   likes        Int      @default(0)
   retweets     Int      @default(0)
   isBreaking   Boolean  @default(false)
+  source       String   @default("truthsocial")
+  mediaUrls    String   @default("")
+  mediaType    String   @default("")
+  isImageOnly  Boolean  @default(false)
+  rawPayload   String   @default("")
   url          String   @default("")
   tweetDate    DateTime @default(now())
   fetchedAt    DateTime @default(now())

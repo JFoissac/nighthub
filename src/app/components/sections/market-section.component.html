@@ -1,4 +1,4 @@
-    <section class="lg:col-span-5 neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 0ms">
+    <section class="lg:col-span-5 neo-glass rounded overflow-hidden flex flex-col fade-in h-[424px]" style="animation-delay: 0ms">
       <div class="px-4 py-3 border-b border-[#1E1E2E] flex items-center justify-between bg-[#131318]/40 flex-shrink-0">
         <div class="flex items-center gap-2">
           <svg class="w-3.5 h-3.5 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -24,7 +24,7 @@
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto" style="max-height: 420px">
+      <div class="flex-1 min-h-0 overflow-y-auto">
 
         <!-- ============ GRID VIEW ============ -->
         @if (viewMode() === 'grid') {
@@ -104,7 +104,9 @@
 
         <!-- ============ LIST VIEW ============ -->
         @if (viewMode() === 'list') {
+          <div class="xl:columns-2 xl:gap-4">
           @if (store.crypto().length) {
+            <div class="break-inside-avoid">
             <div class="px-3 pt-2 pb-1"><span class="font-label-caps text-[9px] text-text-muted">CRYPTO</span></div>
             <div class="px-4 py-1.5 flex items-center text-[8px] font-label-caps text-text-muted opacity-50">
               <span class="flex-1 min-w-0">TICKER / NAME</span>
@@ -169,10 +171,12 @@
                 }
               </div>
             }
+            </div>
           }
 
           @if (store.groupedStocks().length) {
             @for (group of store.groupedStocks(); track group.key) {
+              <div class="break-inside-avoid">
               <div class="px-3 pt-3 pb-1 border-t border-[#1E1E2E]"><span class="font-label-caps text-[9px] text-text-muted">{{ group.label }}</span></div>
               <div class="px-4 py-1.5 flex items-center text-[8px] font-label-caps text-text-muted opacity-50">
                 <span class="flex-1 min-w-0">TICKER / NAME</span>
@@ -234,8 +238,10 @@
                   }
                 </div>
               }
+              </div>
             }
           }
+          </div>
         }
 
         <!-- ============ LOADING / ERROR ============ -->

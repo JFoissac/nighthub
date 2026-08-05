@@ -368,7 +368,12 @@ npm run server      # Backend Express sur :3000
 
 ## Reference : NowStreaming
 
-Depot clone dans `references/NowStreaming/`. Extension Chrome qui :
+Snapshot minimal dans `references/NowStreaming/` conserve uniquement :
+- `README.md`
+- `popup.js`
+- `LICENSE`
+
+Il sert de reference pour la logique d'import Twitch. L'extension originale :
 1. S'authentifie via OAuth Twitch (scope `user:read:follows`)
 2. Resout username -> user ID via Helix API
 3. Pagine les follows via `/helix/channels/followed?user_id=X&first=100`
@@ -376,3 +381,4 @@ Depot clone dans `references/NowStreaming/`. Extension Chrome qui :
 5. Affiche live/offline avec tri par viewers/uptime/jeu
 
 NightHub reproduit ce comportement **sans OAuth** via le GQL public Twitch + import par collage de liste.
+Les assets UI et le clone Git complet de la reference ont ete retires car ils n'etaient pas utilises par l'application.

@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { youtubeService } from '../services/youtube.service';
-import { twitchService } from '../services/twitch.service';
+import { youtubeService, twitchService } from '../services/backend.runtime';
 
 const router = Router();
 

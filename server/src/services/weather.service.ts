@@ -205,5 +205,3 @@ function isCurrentAvailable(current: any): current is { relative_humidity_2m: nu
 export function createWeatherService(): WeatherService {
   return new WeatherService();
 }
-
-export const weatherService = createWeatherService();

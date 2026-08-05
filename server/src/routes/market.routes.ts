@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { marketService } from '../services/market.service';
+import { marketService } from '../services/backend.runtime';
 import { logger } from '../utils/logger';
 
 const router = Router();

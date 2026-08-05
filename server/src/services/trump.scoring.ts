@@ -228,6 +228,19 @@ export function createDefaultTrumpScoringProfile(): TrumpScoringProfile {
   };
 }
 
+export function mergeTrumpScoringProfiles(...profiles: TrumpScoringProfile[]): TrumpScoringProfile {
+  const merged: Record<string, number> = {};
+
+  for (const profile of profiles) {
+    for (const [phrase, weight] of Object.entries(profile.learnedBoosts || {})) {
+      const total = (merged[phrase] || 0) + weight;
+      merged[phrase] = Math.max(-2.5, Math.min(3, Number(total.toFixed(2))));
+    }
+  }
+
+  return { learnedBoosts: merged };
+}
+
 export function buildTrumpScoringProfile(records: TrumpCorpusEntry[]): TrumpScoringProfile {
   const boostAccumulator = new Map<string, number>();
 
@@ -242,10 +255,8 @@ export function buildTrumpScoringProfile(records: TrumpCorpusEntry[]): TrumpScor
       boostAccumulator.set(phrase, (boostAccumulator.get(phrase) || 0) + weight);
     }
 
-    if (weight > 0) {
-      for (const phrase of extractLearnedPhrases(normalized)) {
-        boostAccumulator.set(phrase, (boostAccumulator.get(phrase) || 0) + (weight * 0.7));
-      }
+    for (const phrase of extractLearnedPhrases(normalized)) {
+      boostAccumulator.set(phrase, (boostAccumulator.get(phrase) || 0) + (weight * 0.7));
     }
   }
 
@@ -307,7 +318,12 @@ function scoreMilitaryEscalation(text: string): number {
   if (!highSignal) return 0;
 
   const geopoliticalHit = COUNTRY_AND_GEOPOLITICAL_TERMS.some((phrase) => hasPhrase(text, phrase));
-  if (hasPhrase(text, 'shot down') || (geopoliticalHit && hasPhrase(text, 'attack'))) return 10;
+  const directAttack =
+    hasPhrase(text, 'attack') ||
+    hasPhrase(text, 'attacked') ||
+    hasPhrase(text, 'attacking');
+
+  if (hasPhrase(text, 'shot down') || (geopoliticalHit && directAttack)) return 10;
   if ((geopoliticalHit && hasPhrase(text, 'war')) || (geopoliticalHit && hasPhrase(text, 'strike'))) return 9;
   if (hasPhrase(text, 'military') || hasPhrase(text, 'bomb') || hasPhrase(text, 'missiles')) return 8;
   return 7;
@@ -316,6 +332,18 @@ function scoreMilitaryEscalation(text: string): number {
 function scoreEconomicShock(text: string): number {
   const tariffScore = scoreTariffs(text);
   if (tariffScore > 0) return tariffScore;
+
+  if (
+    hasPhrase(text, 'trade deficit') &&
+    !hasPhrase(text, 'tariff') &&
+    !hasPhrase(text, 'tariffs') &&
+    !hasPhrase(text, 'sanctions') &&
+    !hasPhrase(text, 'export controls') &&
+    !hasPhrase(text, 'embargo') &&
+    !hasPhrase(text, 'blockade')
+  ) {
+    return 0;
+  }
 
   const economicHit = ECONOMIC_IMPACT_PHRASES.some((phrase) => hasPhrase(text, phrase));
   if (!economicHit) return 0;
@@ -354,6 +382,28 @@ function scoreEngagement(likes?: number, retweets?: number): number {
   return 0;
 }
 
+function scoreBenignContextPenalty(text: string): number {
+  let penalty = 0;
+
+  if (/complete and total endorsement|endorsement for re-election|get out and vote|election day|telerally/i.test(text)) {
+    penalty += 4;
+  }
+
+  if (/congratulations|early voting|voter i\.d\.|voting location/i.test(text)) {
+    penalty += 2.5;
+  }
+
+  if (/record .*exports?|trade deficit/i.test(text)) {
+    penalty += 3.5;
+  }
+
+  if (/acting director|will be taking over/.test(text) && !/fired|resigned|removed|attack|war|bomb|missile/.test(text)) {
+    penalty += 2.5;
+  }
+
+  return penalty;
+}
+
 export function scoreTrumpContent(
   rawContent: string,
   profile: TrumpScoringProfile = createDefaultTrumpScoringProfile(),
@@ -365,9 +415,14 @@ export function scoreTrumpContent(
   if (isNoiseOnly(content)) return 0;
 
   let score = 0;
-  score += scoreMilitaryEscalation(lower);
-  score += scoreEconomicShock(lower);
-  score += scoreLeadershipChange(lower);
+  const militaryScore = scoreMilitaryEscalation(lower);
+  const economicScore = scoreEconomicShock(lower);
+  const leadershipScore = scoreLeadershipChange(lower);
+  const criticalEventPeak = Math.max(militaryScore, economicScore, leadershipScore);
+
+  score += militaryScore;
+  score += economicScore;
+  score += leadershipScore;
 
   for (const [phrase, weight] of BASE_HIGH_WEIGHTS.entries()) {
     if (hasPhrase(lower, phrase)) score += weight;
@@ -382,14 +437,19 @@ export function scoreTrumpContent(
 
   score += scorePatternBoosts(content);
   score += scoreEngagement(meta.likes, meta.retweets);
+  score -= scoreBenignContextPenalty(lower);
 
   const lengthPenalty = stripUrls(lower).length < 25 ? 1 : 0;
   score -= lengthPenalty;
 
   if (score <= 0) return 0;
 
-  if (score >= 12) return 10;
-  if (score >= 10) return 10;
-  if (score >= 9) return 9;
-  return Math.max(0, Math.round(score));
+  let normalizedScore = score;
+
+  // Reserve the top of the scale for truly critical event classes.
+  if (criticalEventPeak < 10) normalizedScore = Math.min(normalizedScore, 9.4);
+  if (criticalEventPeak < 9) normalizedScore = Math.min(normalizedScore, 8.4);
+  if (criticalEventPeak < 8) normalizedScore = Math.min(normalizedScore, 7.4);
+
+  return Math.max(0, Math.min(10, Math.round(normalizedScore)));
 }

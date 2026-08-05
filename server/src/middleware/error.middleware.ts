@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { config, isProduction } from '../config/env';
+import { isProduction } from '../config/env';
 import { logger } from '../utils/logger';
 
 export interface AppError extends Error {

@@ -460,5 +460,3 @@ export class TwitchService {
 export function createTwitchService(): TwitchService {
   return new TwitchService();
 }
-
-export const twitchService = createTwitchService();

@@ -1,22 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { twitchService } from '../services/twitch.service';
+import { twitchService } from '../services/backend.runtime';
+import { validateBody } from './route.utils';
 
 const router = Router();
 
 const twitchImportSchema = z.object({ channels: z.array(z.string()) });
-
-function validateBody<T extends z.ZodTypeAny>(schema: T) {
-  return (req: Request, res: Response, next: Function): void => {
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten().fieldErrors });
-      return;
-    }
-    (req as any).validatedBody = parsed.data as z.infer<T>;
-    next();
-  };
-}
 
 async function getStreams(_req: Request, res: Response) {
   try {

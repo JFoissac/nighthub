@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-vi.mock('rss-parser', () => ({
-  default: function () {
-    return { parseURL: vi.fn().mockResolvedValue({ items: [] }) };
-  } as any,
-}));
+import { createAggregatorService, type AggregatorServiceDeps } from './aggregator.service';
 
 vi.mock('../db/prisma.client', () => ({
   prisma: {
@@ -14,77 +9,52 @@ vi.mock('../db/prisma.client', () => ({
   },
 }));
 
-vi.mock('./weather.service', () => ({
-  weatherService: {
-    getWeeklyForecast: vi.fn(),
-  },
-}));
-
-vi.mock('./news.service', () => ({
-  newsService: {
-    fetchAiNews: vi.fn(),
-    getCachedNews: vi.fn(),
-    detectFeed: vi.fn(),
-    validateFeedUrl: vi.fn(),
-  },
-}));
-
-vi.mock('./youtube.service', () => ({
-  youtubeService: {
-    fetchAndCacheLatestVideos: vi.fn(),
-    getLatestVideos: vi.fn(),
-    getCachedLiveStreams: vi.fn(),
-    verifyAndCleanLiveStreams: vi.fn(),
-    getChannelHandles: vi.fn(),
-    getChannelIds: vi.fn(),
-    saveChannelHandles: vi.fn(),
-    saveChannelIds: vi.fn(),
-  },
-}));
-
-vi.mock('./twitch.service', () => ({
-  twitchService: {
-    getFollowedStreams: vi.fn(),
-    getLiveStreamsFast: vi.fn(),
-    refreshLiveCacheLight: vi.fn(),
-    getFollows: vi.fn(),
-    getFollowsByProfile: vi.fn(),
-    importFollowsFromList: vi.fn(),
-  },
-}));
-
-vi.mock('./trump.service', () => ({
-  trumpService: {
-    fetchTrumpTweets: vi.fn(),
-    getCachedTrumpTweets: vi.fn(),
-  },
-}));
-
-vi.mock('./market.service', () => ({
-  marketService: {
-    getLiveMarketData: vi.fn(),
-  },
-}));
-
 vi.mock('../jobs/aggregator.cron', () => ({
   createAggregatorCronJobs: vi.fn().mockReturnValue({
     stop: vi.fn(),
   }),
 }));
 
-import { aggregatorService } from './aggregator.service';
-import { weatherService } from './weather.service';
-import { newsService } from './news.service';
-import { youtubeService } from './youtube.service';
-import { twitchService } from './twitch.service';
-import { trumpService } from './trump.service';
 import { createAggregatorCronJobs } from '../jobs/aggregator.cron';
+
+function createDeps(): AggregatorServiceDeps {
+  return {
+    weatherService: {
+      getWeeklyForecast: vi.fn(),
+    },
+    newsService: {
+      fetchAiNews: vi.fn(),
+      getCachedNews: vi.fn(),
+    },
+    youtubeService: {
+      fetchAndCacheLatestVideos: vi.fn(),
+      getLatestVideos: vi.fn(),
+      getCachedLiveStreams: vi.fn(),
+      verifyAndCleanLiveStreams: vi.fn(),
+    },
+    twitchService: {
+      getFollowedStreams: vi.fn(),
+      getLiveStreamsFast: vi.fn(),
+      refreshLiveCacheLight: vi.fn(),
+    },
+    trumpService: {
+      fetchTrumpTweets: vi.fn(),
+      getCachedTrumpTweets: vi.fn(),
+    },
+    marketService: {
+      getLiveMarketData: vi.fn(),
+    },
+  };
+}
+
+let deps: AggregatorServiceDeps;
+let aggregatorService: ReturnType<typeof createAggregatorService>;
 
 describe('AggregatorService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (aggregatorService as any).cronJobs = null;
-    (aggregatorService as any).isShuttingDown = false;
+    deps = createDeps();
+    aggregatorService = createAggregatorService(deps);
   });
 
   describe('calculateRelevanceScore', () => {
@@ -156,8 +126,8 @@ describe('AggregatorService', () => {
       expect(createAggregatorCronJobs).toHaveBeenCalledWith(
         expect.objectContaining({
           aggregatorService,
-          youtubeService,
-        })
+          youtubeService: deps.youtubeService,
+        }),
       );
 
       aggregatorService.stop();
@@ -180,30 +150,30 @@ describe('AggregatorService', () => {
 
   describe('refreshAll', () => {
     it('calls all underlying services', async () => {
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({});
-      (newsService.fetchAiNews as any).mockResolvedValue([]);
-      (youtubeService.fetchAndCacheLatestVideos as any).mockResolvedValue(undefined);
-      (twitchService.getFollowedStreams as any).mockResolvedValue([]);
-      (trumpService.fetchTrumpTweets as any).mockResolvedValue([]);
+      (deps.weatherService.getWeeklyForecast as any).mockResolvedValue({});
+      (deps.newsService.fetchAiNews as any).mockResolvedValue([]);
+      (deps.youtubeService.fetchAndCacheLatestVideos as any).mockResolvedValue(undefined);
+      (deps.twitchService.getFollowedStreams as any).mockResolvedValue([]);
+      (deps.trumpService.fetchTrumpTweets as any).mockResolvedValue([]);
 
       await aggregatorService.refreshAll();
 
-      expect(weatherService.getWeeklyForecast).toHaveBeenCalledWith('Caen');
-      expect(newsService.fetchAiNews).toHaveBeenCalled();
-      expect(youtubeService.fetchAndCacheLatestVideos).toHaveBeenCalled();
-      expect(twitchService.getFollowedStreams).toHaveBeenCalled();
-      expect(trumpService.fetchTrumpTweets).toHaveBeenCalledWith(20);
+      expect(deps.weatherService.getWeeklyForecast).toHaveBeenCalledWith('Caen');
+      expect(deps.newsService.fetchAiNews).toHaveBeenCalled();
+      expect(deps.youtubeService.fetchAndCacheLatestVideos).toHaveBeenCalled();
+      expect(deps.twitchService.getFollowedStreams).toHaveBeenCalled();
+      expect(deps.trumpService.fetchTrumpTweets).toHaveBeenCalledWith(20);
     });
 
     it('logs partial failure summary when some refresh tasks reject', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({});
-      (newsService.fetchAiNews as any).mockRejectedValue(new Error('news failed'));
-      (youtubeService.fetchAndCacheLatestVideos as any).mockResolvedValue(undefined);
-      (twitchService.getFollowedStreams as any).mockRejectedValue('twitch failed');
-      (trumpService.fetchTrumpTweets as any).mockResolvedValue([]);
+      (deps.weatherService.getWeeklyForecast as any).mockResolvedValue({});
+      (deps.newsService.fetchAiNews as any).mockRejectedValue(new Error('news failed'));
+      (deps.youtubeService.fetchAndCacheLatestVideos as any).mockResolvedValue(undefined);
+      (deps.twitchService.getFollowedStreams as any).mockRejectedValue('twitch failed');
+      (deps.trumpService.fetchTrumpTweets as any).mockResolvedValue([]);
 
       await aggregatorService.refreshAll();
 
@@ -222,22 +192,22 @@ describe('AggregatorService', () => {
 
   describe('refreshTwitch', () => {
     it('calls twitchService.refreshLiveCacheLight', async () => {
-      (twitchService.refreshLiveCacheLight as any).mockResolvedValue({
+      (deps.twitchService.refreshLiveCacheLight as any).mockResolvedValue({
         changed: false,
         newLives: 0,
         endedLives: 0,
         totalLive: 0,
       });
       await aggregatorService.refreshTwitch();
-      expect(twitchService.refreshLiveCacheLight).toHaveBeenCalled();
+      expect(deps.twitchService.refreshLiveCacheLight).toHaveBeenCalled();
     });
   });
 
   describe('refreshTrump', () => {
     it('calls trumpService.fetchTrumpTweets', async () => {
-      (trumpService.fetchTrumpTweets as any).mockResolvedValue([]);
+      (deps.trumpService.fetchTrumpTweets as any).mockResolvedValue([]);
       await aggregatorService.refreshTrump();
-      expect(trumpService.fetchTrumpTweets).toHaveBeenCalledWith(20);
+      expect(deps.trumpService.fetchTrumpTweets).toHaveBeenCalledWith(20);
     });
   });
 
@@ -246,34 +216,34 @@ describe('AggregatorService', () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue(null);
 
-      (weatherService.getWeeklyForecast as any).mockResolvedValue(null);
-      (twitchService.getLiveStreamsFast as any).mockResolvedValue([]);
-      (youtubeService.getLatestVideos as any).mockResolvedValue([]);
-      (youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
-      (newsService.getCachedNews as any).mockResolvedValue([]);
-      (trumpService.getCachedTrumpTweets as any).mockResolvedValue([]);
+      (deps.weatherService.getWeeklyForecast as any).mockResolvedValue(null);
+      (deps.twitchService.getLiveStreamsFast as any).mockResolvedValue([]);
+      (deps.youtubeService.getLatestVideos as any).mockResolvedValue([]);
+      (deps.youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
+      (deps.newsService.getCachedNews as any).mockResolvedValue([]);
+      (deps.trumpService.getCachedTrumpTweets as any).mockResolvedValue([]);
 
       await aggregatorService.getDashboardData();
 
-      expect(twitchService.getLiveStreamsFast).toHaveBeenCalledWith(20);
-      expect(twitchService.getFollowedStreams).not.toHaveBeenCalled();
+      expect(deps.twitchService.getLiveStreamsFast).toHaveBeenCalledWith(20);
+      expect(deps.twitchService.getFollowedStreams).not.toHaveBeenCalled();
     });
 
     it('returns the expected structure with all sections', async () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue({ weatherCity: 'Paris', trumpMinCriticality: 0 });
 
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Paris', days: [] });
-      (twitchService.getLiveStreamsFast as any).mockResolvedValue([{ title: 'stream1' }]);
-      (youtubeService.getLatestVideos as any).mockResolvedValue([{ title: 'video1', views: 100, fetchedAt: new Date().toISOString() }]);
-      (youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
-      (newsService.getCachedNews as any).mockResolvedValue([{ title: 'news1', fetchedAt: new Date().toISOString() }]);
-      (trumpService.getCachedTrumpTweets as any).mockResolvedValue([{ content: 'trump1', criticality: 3 }]);
+      (deps.weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Paris', days: [] });
+      (deps.twitchService.getLiveStreamsFast as any).mockResolvedValue([{ title: 'stream1' }]);
+      (deps.youtubeService.getLatestVideos as any).mockResolvedValue([{ title: 'video1', views: 100, fetchedAt: new Date().toISOString() }]);
+      (deps.youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
+      (deps.newsService.getCachedNews as any).mockResolvedValue([{ title: 'news1', fetchedAt: new Date().toISOString() }]);
+      (deps.trumpService.getCachedTrumpTweets as any).mockResolvedValue([{ content: 'trump1', criticality: 3 }]);
 
       const result = await aggregatorService.getDashboardData();
 
       expect(result.weather).toEqual({ city: 'Paris', days: [] });
-      expect(twitchService.getLiveStreamsFast).toHaveBeenCalledWith(20);
+      expect(deps.twitchService.getLiveStreamsFast).toHaveBeenCalledWith(20);
       expect(result.streams).toHaveLength(1);
       expect(result.videos).toHaveLength(1);
       expect(result.news).toHaveLength(1);
@@ -285,12 +255,12 @@ describe('AggregatorService', () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue(null);
 
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Caen', days: [] });
-      (twitchService.getLiveStreamsFast as any).mockResolvedValue(null);
-      (youtubeService.getLatestVideos as any).mockResolvedValue([]);
-      (youtubeService.getCachedLiveStreams as any).mockResolvedValue(null);
-      (newsService.getCachedNews as any).mockResolvedValue([{ title: 'still-here' }]);
-      (trumpService.getCachedTrumpTweets as any).mockResolvedValue([]);
+      (deps.weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Caen', days: [] });
+      (deps.twitchService.getLiveStreamsFast as any).mockResolvedValue(null);
+      (deps.youtubeService.getLatestVideos as any).mockResolvedValue([]);
+      (deps.youtubeService.getCachedLiveStreams as any).mockResolvedValue(null);
+      (deps.newsService.getCachedNews as any).mockResolvedValue([{ title: 'still-here' }]);
+      (deps.trumpService.getCachedTrumpTweets as any).mockResolvedValue([]);
 
       const result = await aggregatorService.getDashboardData();
       expect(result.streams).toEqual([]);
@@ -302,12 +272,12 @@ describe('AggregatorService', () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue(null);
 
-      (weatherService.getWeeklyForecast as any).mockResolvedValue(null);
-      (twitchService.getLiveStreamsFast as any).mockResolvedValue([]);
-      (youtubeService.getLatestVideos as any).mockResolvedValue([]);
-      (youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
-      (newsService.getCachedNews as any).mockResolvedValue([]);
-      (trumpService.getCachedTrumpTweets as any).mockResolvedValue([]);
+      (deps.weatherService.getWeeklyForecast as any).mockResolvedValue(null);
+      (deps.twitchService.getLiveStreamsFast as any).mockResolvedValue([]);
+      (deps.youtubeService.getLatestVideos as any).mockResolvedValue([]);
+      (deps.youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
+      (deps.newsService.getCachedNews as any).mockResolvedValue([]);
+      (deps.trumpService.getCachedTrumpTweets as any).mockResolvedValue([]);
 
       const progressSteps: string[] = [];
       await aggregatorService.getDashboardData((step) => progressSteps.push(step));
@@ -321,18 +291,18 @@ describe('AggregatorService', () => {
       const { prisma } = await import('../db/prisma.client');
       (prisma.userPreference.findFirst as any).mockResolvedValue({ weatherCity: 'Caen', trumpMinCriticality: 5 });
 
-      (weatherService.getWeeklyForecast as any).mockResolvedValue(null);
-      (twitchService.getLiveStreamsFast as any).mockResolvedValue([]);
-      (youtubeService.getLatestVideos as any).mockResolvedValue([]);
-      (youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
-      (newsService.getCachedNews as any).mockResolvedValue([]);
+      (deps.weatherService.getWeeklyForecast as any).mockResolvedValue(null);
+      (deps.twitchService.getLiveStreamsFast as any).mockResolvedValue([]);
+      (deps.youtubeService.getLatestVideos as any).mockResolvedValue([]);
+      (deps.youtubeService.getCachedLiveStreams as any).mockResolvedValue([]);
+      (deps.newsService.getCachedNews as any).mockResolvedValue([]);
 
       const trumpTweets = [
         { content: 'low', criticality: 2 },
         { content: 'medium', criticality: 5 },
         { content: 'high', criticality: 8 },
       ];
-      (trumpService.getCachedTrumpTweets as any).mockResolvedValue(trumpTweets);
+      (deps.trumpService.getCachedTrumpTweets as any).mockResolvedValue(trumpTweets);
 
       const result = await aggregatorService.getDashboardData();
       expect(result.trump).toHaveLength(2);

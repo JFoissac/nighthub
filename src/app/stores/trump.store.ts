@@ -1,5 +1,5 @@
 import { computed, inject } from '@angular/core';
-import { signalStore, withState, withProps, withComputed, withMethods, withHooks, patchState } from '@ngrx/signals';
+import { signalStore, withState, withProps, withComputed, withMethods, patchState } from '@ngrx/signals';
 import { ApiService } from '../services/api.service';
 import { TrumpItem } from '../models';
 
@@ -63,8 +63,22 @@ export const TrumpStore = signalStore(
     },
 
     reload() {
-      patchState(store, { items: [], atEnd: false, error: null });
-      this.loadMore();
+      const next = 20;
+      patchState(store, { items: [], atEnd: false, error: null, loading: true });
+
+      store._api.getTrumpTweets(next).subscribe({
+        next: (items) => {
+          patchState(store, {
+            items,
+            loading: false,
+            atEnd: items.length < next,
+            lastUpdated: Date.now(),
+          });
+        },
+        error: (err) => {
+          patchState(store, { loading: false, error: String(err) });
+        },
+      });
     },
 
     setLoading(loading: boolean) {
@@ -97,9 +111,5 @@ export const TrumpStore = signalStore(
         store._timer = null;
       }
     },
-  })),
-
-  withHooks({
-    onInit(store) {},
-  })
+  }))
 );

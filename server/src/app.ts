@@ -9,8 +9,7 @@ import healthRoutes from './routes/health.routes';
 import authRoutes from './routes/auth.routes';
 import apiRoutes from './routes/api.routes';
 import { prisma } from './db/prisma.client';
-import { aggregatorService } from './services/aggregator.service';
-import { youtubeService } from './services/youtube.service';
+import { aggregatorService, trumpTrainingService, youtubeService } from './services/backend.runtime';
 
 const app = express();
 
@@ -84,6 +83,7 @@ async function gracefulShutdown(signal: string) {
 
   // Stop aggregator cron jobs
   aggregatorService.stop();
+  trumpTrainingService.stop();
 
   // Close database connection
   await prisma.$disconnect();
@@ -97,10 +97,11 @@ async function startServer() {
     await prisma.$connect();
     logger.info('Database connected', { url: config.database.url });
 
-    youtubeService.cleanOrphanChannelIds().catch((e) => logger.error('Clean orphan channel IDs failed', e));
+    youtubeService.cleanOrphanChannelIds().catch((e: unknown) => logger.error('Clean orphan channel IDs failed', e));
 
     // Fire-and-forget cache warm-up (runs in background)
-    youtubeService.preWarmCache().catch((e) => logger.warn('Pre-warm failed', { error: e }));
+    youtubeService.preWarmCache().catch((e: unknown) => logger.warn('Pre-warm failed', { error: e }));
+    trumpTrainingService.start();
 
     aggregatorService.refreshAll();
     logger.info('Aggregator initial data fetch started');

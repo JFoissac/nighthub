@@ -56,4 +56,29 @@ describe('Trump scoring model', () => {
     expect(learnedScore).toBeGreaterThan(defaultScore);
     expect(learnedScore).toBeGreaterThanOrEqual(2);
   });
+
+  it('does not over-score medium geopolitical or policy posts as 10/10', () => {
+    const profile = createDefaultTrumpScoringProfile();
+
+    expect(
+      scoreTrumpContent('The Pentagon and Treasury are coordinating an immediate sanctions package.', profile),
+    ).toBeLessThan(10);
+    expect(
+      scoreTrumpContent('A ceasefire is collapsing and the military is preparing new strikes.', profile),
+    ).toBeLessThan(10);
+    expect(
+      scoreTrumpContent('A new executive order on AI regulation will be signed today.', profile),
+    ).toBeLessThan(10);
+  });
+
+  it('keeps endorsement and campaign boilerplate far below world-alert levels', () => {
+    const profile = createDefaultTrumpScoringProfile();
+
+    expect(
+      scoreTrumpContent('Congressman Russell Fry has my Complete and Total Endorsement for Re-Election.', profile),
+    ).toBeLessThan(5);
+    expect(
+      scoreTrumpContent('I will be doing a TeleRally LIVE at 5:30 P.M. EST for Senator Lindsey Graham.', profile),
+    ).toBeLessThan(5);
+  });
 });

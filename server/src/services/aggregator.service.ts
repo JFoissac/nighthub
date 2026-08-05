@@ -1,16 +1,40 @@
-import { weatherService } from './weather.service';
-import { newsService } from './news.service';
-import { youtubeService } from './youtube.service';
-import { twitchService } from './twitch.service';
-import { trumpService } from './trump.service';
-import { marketService } from './market.service';
 import { logger } from '../utils/logger';
 import { RELEVANCE } from '../config/constants';
 import { createAggregatorCronJobs } from '../jobs/aggregator.cron';
+import type { WeatherService } from './weather.service';
+import type { NewsService } from './news.service';
+import type { YoutubeService } from './youtube.service';
+import type { TwitchService } from './twitch.service';
+import type { TrumpService } from './trump.service';
+import type { MarketService } from './market.service';
+
+export type AggregatorWeatherService = Pick<WeatherService, 'getWeeklyForecast'>;
+export type AggregatorNewsService = Pick<NewsService, 'fetchAiNews' | 'getCachedNews'>;
+export type AggregatorYoutubeService = Pick<
+  YoutubeService,
+  'fetchAndCacheLatestVideos' | 'getLatestVideos' | 'getCachedLiveStreams' | 'verifyAndCleanLiveStreams'
+>;
+export type AggregatorTwitchService = Pick<
+  TwitchService,
+  'getFollowedStreams' | 'getLiveStreamsFast' | 'refreshLiveCacheLight'
+>;
+export type AggregatorTrumpService = Pick<TrumpService, 'fetchTrumpTweets' | 'getCachedTrumpTweets'>;
+export type AggregatorMarketService = Pick<MarketService, 'getLiveMarketData'>;
+
+export type AggregatorServiceDeps = {
+  weatherService: AggregatorWeatherService;
+  newsService: AggregatorNewsService;
+  youtubeService: AggregatorYoutubeService;
+  twitchService: AggregatorTwitchService;
+  trumpService: AggregatorTrumpService;
+  marketService: AggregatorMarketService;
+};
 
 export class AggregatorService {
   private isShuttingDown = false;
   private cronJobs: { stop: () => void } | null = null;
+
+  constructor(private readonly deps: AggregatorServiceDeps) {}
 
   start(): void {
     if (this.cronJobs) {
@@ -18,7 +42,7 @@ export class AggregatorService {
     }
     this.cronJobs = createAggregatorCronJobs({
       aggregatorService: this,
-      youtubeService,
+      youtubeService: this.deps.youtubeService,
       shouldRun: () => !this.isShuttingDown,
       log: logger,
     });
@@ -35,11 +59,11 @@ export class AggregatorService {
   async refreshAll(): Promise<void> {
     try {
       const tasks = [
-        { name: 'weather', promise: weatherService.getWeeklyForecast('Caen') },
-        { name: 'news', promise: newsService.fetchAiNews() },
-        { name: 'youtube', promise: youtubeService.fetchAndCacheLatestVideos() },
-        { name: 'twitch', promise: twitchService.getFollowedStreams() },
-        { name: 'trump', promise: trumpService.fetchTrumpTweets(20) },
+        { name: 'weather', promise: this.deps.weatherService.getWeeklyForecast('Caen') },
+        { name: 'news', promise: this.deps.newsService.fetchAiNews() },
+        { name: 'youtube', promise: this.deps.youtubeService.fetchAndCacheLatestVideos() },
+        { name: 'twitch', promise: this.deps.twitchService.getFollowedStreams() },
+        { name: 'trump', promise: this.deps.trumpService.fetchTrumpTweets(20) },
       ];
       const results = await Promise.allSettled(tasks.map(task => task.promise));
       const failures = results
@@ -73,7 +97,7 @@ export class AggregatorService {
 
   async refreshTwitch(): Promise<void> {
     try {
-      const result = await twitchService.refreshLiveCacheLight();
+      const result = await this.deps.twitchService.refreshLiveCacheLight();
       if (!result.changed) {
         logger.debug('Twitch check: no changes', { totalLive: result.totalLive });
         return;
@@ -90,7 +114,7 @@ export class AggregatorService {
 
   async refreshTrump(): Promise<void> {
     try {
-      await trumpService.fetchTrumpTweets(20);
+      await this.deps.trumpService.fetchTrumpTweets(20);
     } catch (error) {
       logger.error('Error refreshing Trump', error);
     }
@@ -157,13 +181,13 @@ export class AggregatorService {
       onProgress?.('Loading streams, videos, news...');
 
       const [weather, streams, videos, news, trump, youtubeLives, market] = await Promise.allSettled([
-        weatherService.getWeeklyForecast(weatherCity),
-        twitchService.getLiveStreamsFast(20),
-        youtubeService.getLatestVideos(20),
-        newsService.getCachedNews(20),
-        trumpService.getCachedTrumpTweets(20),
-        youtubeService.getCachedLiveStreams(10),
-        marketService.getLiveMarketData(),
+        this.deps.weatherService.getWeeklyForecast(weatherCity),
+        this.deps.twitchService.getLiveStreamsFast(20),
+        this.deps.youtubeService.getLatestVideos(20),
+        this.deps.newsService.getCachedNews(20),
+        this.deps.trumpService.getCachedTrumpTweets(20),
+        this.deps.youtubeService.getCachedLiveStreams(10),
+        this.deps.marketService.getLiveMarketData(),
       ]);
 
       onProgress?.('Done');
@@ -222,4 +246,6 @@ export class AggregatorService {
   }
 }
 
-export const aggregatorService = new AggregatorService();
+export function createAggregatorService(deps: AggregatorServiceDeps): AggregatorService {
+  return new AggregatorService(deps);
+}

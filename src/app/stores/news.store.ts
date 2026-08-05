@@ -1,5 +1,5 @@
 import { computed, inject } from '@angular/core';
-import { signalStore, withState, withProps, withComputed, withMethods, withHooks, patchState } from '@ngrx/signals';
+import { signalStore, withState, withProps, withComputed, withMethods, patchState } from '@ngrx/signals';
 import { ApiService } from '../services/api.service';
 import { AiNewsItem } from '../models';
 
@@ -97,9 +97,5 @@ export const NewsStore = signalStore(
         store._timer = null;
       }
     },
-  })),
-
-  withHooks({
-    onInit(store) {},
-  })
+  }))
 );

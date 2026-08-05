@@ -117,11 +117,13 @@ import { MarketStore } from '../../stores/market.store';
           ></app-youtube-section>
         </div>
 
-        <app-streams-section
-          (selectStream)="onStreamSelect($event)"
-          (openStreamList)="showStreamList.set(true)"
-          (openSettings)="showSources.set(true)"
-        ></app-streams-section>
+        <div class="mt-8">
+          <app-streams-section
+            (selectStream)="onStreamSelect($event)"
+            (openStreamList)="showStreamList.set(true)"
+            (openSettings)="showSources.set(true)"
+          ></app-streams-section>
+        </div>
 
         <!-- Bottom Row: AI Blog (6-col) + Trump Watch (6-col) -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -180,6 +182,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.loadDashboard();
+    window.setTimeout(() => {
+      if (!this.trumpStore.count()) {
+        this.trumpStore.reload();
+      }
+    }, 2500);
   }
 
   private weatherRefreshInterval: ReturnType<typeof setInterval> | null = null;
@@ -298,6 +305,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.isLive.set(true);
     this.marketStore.startAutoRefresh();
     this.trumpStore.startAutoRefresh();
+    if (!this.trumpStore.count() && !this.trumpStore.isLoading()) {
+      this.trumpStore.reload();
+    }
     this.newsStore.startAutoRefresh();
     this.streamsStore.startAutoRefresh();
     this.videosStore.startAutoRefresh();

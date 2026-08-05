@@ -11,6 +11,7 @@ import {
   RESOLVE_NETWORK_COOLDOWN_MS,
   RESOLVE_LOG_INTERVAL_MS,
   HANDLE_RETRY_BACKOFF_MS,
+  PIPED_BATCH_CONCURRENCY,
   YOUTUBE_VIDEO_BATCH_SIZE,
 } from '../config/constants';
 import Parser from 'rss-parser';
@@ -317,6 +318,38 @@ export class YoutubeService {
       .map(h => this.normalizeHandle(h))
       .filter((h): h is string => Boolean(h));
     try {
+      const existingHandles = await this.getChannelHandles();
+      const removedHandles = existingHandles
+        .map((h) => this.normalizeHandle(h))
+        .filter((h): h is string => Boolean(h))
+        .filter((handle) => !normalized.includes(handle));
+      const removedChannelIds = removedHandles.length > 0
+        ? await this.getChannelIdsByHandles(removedHandles)
+        : [];
+
+      if (removedChannelIds.length > 0) {
+        const currentStoredIds = await this.getChannelIds();
+        const filteredIds = currentStoredIds.filter((id) => !removedChannelIds.includes(id));
+        if (filteredIds.length !== currentStoredIds.length) {
+          await this.saveChannelIds(filteredIds);
+        }
+
+        await prisma.youtubeVideo.deleteMany({
+          where: {
+            OR: [
+              { channelHandle: { in: removedHandles } },
+              { channelId: { in: removedChannelIds } },
+            ],
+          },
+        });
+      } else if (removedHandles.length > 0) {
+        await prisma.youtubeVideo.deleteMany({
+          where: {
+            channelHandle: { in: removedHandles },
+          },
+        });
+      }
+
       await this.persistChannelHandles(normalized);
       await this.reconcileChannelIdsFromHandles(normalized);
       this.triggerBackgroundRefresh();
@@ -454,53 +487,6 @@ export class YoutubeService {
     if (trimmed.length < 2) return [];
 
     const candidates = new Map<string, YoutubeChannelSearchCandidate>();
-    const apiKey = this.getYouTubeApiKey();
-
-    if (apiKey) {
-      try {
-        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&maxResults=10&q=${encodeURIComponent(trimmed)}&key=${apiKey}`;
-        const response = await fetch(url, {
-          headers: { 'User-Agent': YT_USER_AGENT },
-          signal: AbortSignal.timeout(5000),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          const ids = (data?.items || [])
-            .map((item: any) => item?.id?.channelId)
-            .filter((id: string) => YT_CHANNEL_ID_RE.test(id));
-
-          if (ids.length > 0) {
-            const detailsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet&id=${ids.join(',')}&key=${apiKey}`;
-            const detailsRes = await fetch(detailsUrl, {
-              headers: { 'User-Agent': YT_USER_AGENT },
-              signal: AbortSignal.timeout(5000),
-            });
-            if (detailsRes.ok) {
-              const detailsData = await detailsRes.json();
-              for (const item of detailsData?.items || []) {
-                const channelId = item?.id;
-                if (!YT_CHANNEL_ID_RE.test(channelId)) continue;
-                const title = item?.snippet?.title || channelId;
-                const customUrl = item?.snippet?.customUrl || '';
-                const handle = customUrl.startsWith('@') ? customUrl : '';
-                const url = handle
-                  ? `https://www.youtube.com/${handle}`
-                  : `https://www.youtube.com/channel/${channelId}`;
-                candidates.set(channelId, {
-                  channelId,
-                  title,
-                  handle,
-                  url,
-                  source: 'youtube-api',
-                });
-              }
-            }
-          }
-        }
-      } catch {
-        // Ignore API search failures and continue with cache fallback.
-      }
-    }
 
     const cached = await prisma.youtubeVideo.findMany({
       where: {
@@ -650,6 +636,28 @@ export class YoutubeService {
     const apiKey = process.env.YOUTUBE_API_KEY;
     if (!apiKey || apiKey === 'your_youtube_data_api_key') return null;
     return apiKey;
+  }
+
+  private async getChannelIdsByHandles(handles: string[]): Promise<string[]> {
+    if (handles.length === 0) return [];
+
+    const rows = await prisma.youtubeVideo.findMany({
+      where: {
+        channelHandle: { in: handles },
+      },
+      orderBy: { fetchedAt: 'desc' },
+      distinct: ['channelHandle'],
+      select: {
+        channelId: true,
+        channelHandle: true,
+      },
+    });
+
+    return [...new Set(
+      rows
+        .map((row) => row.channelId)
+        .filter((id) => YT_CHANNEL_ID_RE.test(id))
+    )];
   }
 
   private shouldAttemptHandleResolve(handle: string): boolean {
@@ -1084,8 +1092,8 @@ export class YoutubeService {
   /** Fetch durations from YouTube Data API v3 */
   private async fetchYouTubeApiDurations(videoIds: string[], apiKey: string): Promise<Map<string, string>> {
     const durations = new Map<string, string>();
-    for (let i = 0; i < videoIds.length; i += 50) {
-      const batch = videoIds.slice(i, i + 50).join(',');
+    for (let i = 0; i < videoIds.length; i += YOUTUBE_VIDEO_BATCH_SIZE) {
+      const batch = videoIds.slice(i, i + YOUTUBE_VIDEO_BATCH_SIZE).join(',');
       const url = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${batch}&key=${apiKey}`;
       try {
         const res = await fetch(url);
@@ -1109,10 +1117,9 @@ export class YoutubeService {
     }
 
     const durations = new Map<string, string>();
-    const CONCURRENCY = 10;
 
-    for (let i = 0; i < videoIds.length; i += CONCURRENCY) {
-      const batch = videoIds.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < videoIds.length; i += PIPED_BATCH_CONCURRENCY) {
+      const batch = videoIds.slice(i, i + PIPED_BATCH_CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(id => this.fetchPipedStream(instanceUrl, id))
       );
@@ -1434,4 +1441,6 @@ export class YoutubeService {
   }
 }
 
-export const youtubeService = new YoutubeService();
+export function createYoutubeService(): YoutubeService {
+  return new YoutubeService();
+}

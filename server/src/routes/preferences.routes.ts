@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db/prisma.client';
-import { youtubeService } from '../services/youtube.service';
+import { youtubeService } from '../services/backend.runtime';
+import { validateBody } from './route.utils';
 
 const router = Router();
 
@@ -16,18 +17,6 @@ const preferencesSchema = z.object({
   refreshInterval: z.number().optional(),
   themeOledBlack: z.boolean().optional(),
 });
-
-function validateBody<T extends z.ZodTypeAny>(schema: T) {
-  return (req: Request, res: Response, next: Function): void => {
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten().fieldErrors });
-      return;
-    }
-    (req as any).validatedBody = parsed.data as z.infer<T>;
-    next();
-  };
-}
 
 async function getPreferences(_req: Request, res: Response) {
   try {

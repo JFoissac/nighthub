@@ -6,10 +6,8 @@ import newsRoutes from './news.routes';
 import preferencesRoutes from './preferences.routes';
 import marketRoutes from './market.routes';
 import { validateCity, validateLimit } from './route.utils';
-import { weatherService } from '../services/weather.service';
-import { trumpService } from '../services/trump.service';
+import { weatherService, trumpService, youtubeService } from '../services/backend.runtime';
 import { logger } from '../utils/logger';
-import { youtubeService } from '../services/youtube.service';
 
 async function getTrump(req: any, res: any) {
   try {
