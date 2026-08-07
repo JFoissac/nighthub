@@ -15,16 +15,45 @@
             </svg>
           }
           <span class="w-1.5 h-1.5 rounded-full" [class.bg-green-500]="store.crypto().length > 0" [class.bg-red-500]="store.crypto().length === 0"></span>
+          @if (sentiment(); as s) {
+            <div class="flex items-center gap-1.5 px-2 py-0.5 rounded border border-[#1E1E2E] bg-[#131318]/60"
+                 [title]="'Fear&Greed: ' + s.fearGreed.value + ' · VIX: ' + (s.vix.value ?? '—') + ' · TCSD: ' + s.tcsd.delta">
+              <span class="w-1.5 h-1.5 rounded-full" [style.background]="sentimentColor(s.score)"></span>
+              <span class="font-mono text-[9px] text-text-muted">{{ s.score }}</span>
+              <span class="font-label-caps text-[9px]" [style.color]="sentimentColor(s.score)">{{ s.label }}</span>
+            </div>
+          }
           <button class="px-2 py-1 rounded text-[9px] font-label-caps transition-colors hover:bg-[#1E1E2E]/60"
-            [class.text-primary]="viewMode() === 'grid'" [class.text-text-muted]="viewMode() === 'list'"
+            [class.text-primary]="viewMode() === 'grid'" [class.text-text-muted]="viewMode() !== 'grid'"
             (click)="viewMode.set('grid')">GRID</button>
           <button class="px-2 py-1 rounded text-[9px] font-label-caps transition-colors hover:bg-[#1E1E2E]/60"
-            [class.text-primary]="viewMode() === 'list'" [class.text-text-muted]="viewMode() === 'grid'"
+            [class.text-primary]="viewMode() === 'list'" [class.text-text-muted]="viewMode() !== 'list'"
             (click)="viewMode.set('list')">LIST</button>
+          <button class="px-2 py-1 rounded text-[9px] font-label-caps transition-colors hover:bg-[#1E1E2E]/60"
+            [class.text-primary]="viewMode() === 'news'" [class.text-text-muted]="viewMode() !== 'news'"
+            (click)="viewMode.set('news')">NEWS</button>
         </div>
       </div>
 
       <div class="flex-1 min-h-0 overflow-y-auto">
+
+        <!-- ============ NEWS VIEW ============ -->
+        @if (viewMode() === 'news') {
+          <div class="p-3 space-y-2">
+            @for (n of marketNews(); track n.url) {
+              <a [href]="n.url" target="_blank" rel="noopener noreferrer"
+                 class="block rounded border border-[#1E1E2E]/50 bg-[#131318]/40 p-2.5 hover:border-primary/60 transition-colors">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="font-label-caps text-[9px] text-primary truncate">{{ n.source }}</span>
+                  <span class="font-mono text-[9px] text-text-muted shrink-0">{{ n.publishedAt ? (n.publishedAt | date: 'HH:mm') : '' }}</span>
+                </div>
+                <p class="text-[11px] text-text-primary leading-snug mt-1 line-clamp-2">{{ n.title }}</p>
+              </a>
+            } @empty {
+              <p class="text-[10px] font-label-caps text-text-muted text-center py-6">AUCUNE NEWS</p>
+            }
+          </div>
+        }
 
         <!-- ============ GRID VIEW ============ -->
         @if (viewMode() === 'grid') {
@@ -133,9 +162,9 @@
                   </span>
                 </div>
                 @if (expanded()?.symbol === ticker.symbol) {
-                  <div class="px-4 py-3 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80">
+                  <div class="px-4 py-3 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80 market-expand">
                     @if (ticker.sparkline7d?.length) {
-                      <div class="mb-3">
+                      <div class="mb-2">
                         <svg class="w-full h-16" viewBox="0 0 200 64" preserveAspectRatio="none">
                           <defs>
                             <linearGradient [attr.id]="'grad-'+ticker.symbol" x1="0" y1="0" x2="0" y2="1">
@@ -144,10 +173,14 @@
                             </linearGradient>
                           </defs>
                           <polygon [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.points]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></polygon>
-                          <polyline fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
+                          <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
                             stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
-                            [attr.points]="sparklinePoints(ticker.sparkline7d || [], 200, 64)"></polyline>
+                            [attr.d]="sparklinePath(ticker.sparkline7d || [], 200, 64)"></path>
                         </svg>
+                        <div class="flex justify-between font-mono text-[9px] text-text-muted/70 mt-0.5">
+                          <span>{{ sparklineRange(ticker.sparkline7d || []) }}</span>
+                          <span>7D</span>
+                        </div>
                       </div>
                     }
                     <div class="grid grid-cols-3 gap-x-4 gap-y-1.5 text-[9px] font-label-caps">

@@ -32,8 +32,18 @@ async function getMarketSentiment(_req: Request, res: Response) {
   }
 }
 
+async function getMarketNews(_req: Request, res: Response) {
+  try {
+    res.json(await marketIntelService.getMarketNews());
+  } catch (err) {
+    logger.error('[Market] News route error', err);
+    res.status(500).json({ error: 'Failed to fetch market news' });
+  }
+}
+
 router.get('/live', getMarketLive);
 router.get('/fear-greed', getFearGreed);
 router.get('/sentiment', getMarketSentiment);
+router.get('/news', getMarketNews);
 
 export default router;

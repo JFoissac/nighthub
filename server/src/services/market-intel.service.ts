@@ -150,6 +150,27 @@ export class MarketIntelService {
     };
   }
 
+  /** News marché/crypto via NewsAPI (NEWS_API_KEY), cache 10 min. */
+  async getMarketNews(): Promise<any[]> {
+    try {
+      const key = process.env.NEWS_API_KEY;
+      if (!key) return [];
+      const url = `https://newsapi.org/v2/top-headlines?category=business&language=en&pageSize=12&apiKey=${key}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return [];
+      const json: any = await res.json();
+      return (json?.articles ?? []).map((a: any) => ({
+        title: a.title || '',
+        url: a.url || '',
+        source: a.source?.name || 'news',
+        publishedAt: a.publishedAt || null,
+      }));
+    } catch (e) {
+      logger.warn('[MarketIntel] Market news failed', { error: (e as Error).message });
+      return [];
+    }
+  }
+
   /** Sentiment de marché composite. */
   async getMarketSentiment(): Promise<MarketSentiment> {
     const [fearGreed, vix, tcsd] = await Promise.all([

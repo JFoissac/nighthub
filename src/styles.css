@@ -100,6 +100,19 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; letter-spacin
 }
 
 /* === Animations === */
+/* Sparkline tracé progressif (effet qui parcourt le graph au déploiement). */
+@keyframes sparkline-draw {
+  from { stroke-dashoffset: var(--draw-length, 400); }
+  to   { stroke-dashoffset: 0; }
+}
+.sparkline-draw {
+  stroke-dasharray: var(--draw-length, 400);
+  stroke-dashoffset: var(--draw-length, 400);
+  animation: sparkline-draw 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.market-expand {
+  animation: fadeInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }

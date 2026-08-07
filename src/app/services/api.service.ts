@@ -202,6 +202,18 @@ export class ApiService {
     );
   }
 
+  getMarketSentiment(): Observable<any> {
+    return this.http.get<any>(`${this.baseUrl}/market/sentiment`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  getMarketNews(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.baseUrl}/market/news`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
   extractNewsArticle(url: string): Observable<ExtractedNewsArticle> {
     return this.http.post<ExtractedNewsArticle>(`${this.baseUrl}/news/extract`, { url }).pipe(
       catchError(this.handleError)
@@ -271,6 +283,12 @@ export class ApiService {
   importTwitchList(channels: string[]): Observable<{ imported: number; channels: string[]; invalid: string[] }> {
     return this.http.post<{ imported: number; channels: string[]; invalid: string[] }>(
       `${this.baseUrl}/twitch/import-list`, { channels }
+    ).pipe(catchError(this.handleError));
+  }
+
+  getTwitchPlayback(channel: string): Observable<{ auth?: string; sig?: string; expiresAt?: string; anonymous: boolean }> {
+    return this.http.get<{ auth?: string; sig?: string; expiresAt?: string; anonymous: boolean }>(
+      `${this.baseUrl}/twitch/playback?channel=${encodeURIComponent(channel)}`
     ).pipe(catchError(this.handleError));
   }
 
