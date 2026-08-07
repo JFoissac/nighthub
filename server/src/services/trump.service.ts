@@ -10,6 +10,7 @@ import { annotateTrumpSeverity, isTrumpBreaking } from './trump-severity';
 import { trumpTrainingService } from './trump.trainer';
 import { loadTrumpArchiveCorpusFromPath, resolveTrumpArchiveDatasetPath } from './trump.archive';
 import { scoreTrumpTextWeakly } from './trump.weak-scorer';
+import { analyzeTrumpPostsWithAi, isTrumpAiEnabled, getTrumpAiConfig } from './trump.ai';
 
 const rssParser = new Parser({
   timeout: 10000,
@@ -140,10 +141,11 @@ export class TrumpService {
         if (items.length === 0) continue;
 
         const analyzed = items.map(item => this.analyzeItem(item));
-        await this.cacheTrumpTweets(analyzed);
+        const enriched = await this.enrichWithAi(analyzed);
+        await this.cacheTrumpTweets(enriched);
         lastRefreshedAt = Date.now();
 
-        return analyzed.sort((a, b) => b.criticality - a.criticality);
+        return this.sortByRelevance(enriched).slice(0, limit);
       } catch (e) {
         logger.error(`Trump Nitter error (${url})`, e);
       }
@@ -177,8 +179,9 @@ export class TrumpService {
     logger.info('[Trump] ScrapeCreators fetch', { postCount: posts.length });
     this.debugRawPosts('scrapecreators', posts);
     const analyzed = posts.map(post => this.analyzeTruthSocialPost(post));
-    await this.cacheTrumpTweets(analyzed);
-    return analyzed.sort((a, b) => b.criticality - a.criticality);
+    const enriched = await this.enrichWithAi(analyzed);
+    await this.cacheTrumpTweets(enriched);
+    return this.sortByRelevance(enriched).slice(0, limit);
   }
 
   private async fetchTruthSocialPosts(limit: number = 20): Promise<any[]> {
@@ -192,9 +195,10 @@ export class TrumpService {
     this.debugRawPosts('truthsocial', posts);
 
     const analyzed = posts.map(post => this.analyzeTruthSocialPost(post));
-    await this.cacheTrumpTweets(analyzed);
+    const enriched = await this.enrichWithAi(analyzed);
+    await this.cacheTrumpTweets(enriched);
 
-    return analyzed.sort((a, b) => b.criticality - a.criticality);
+    return this.sortByRelevance(enriched).slice(0, limit);
   }
 
   private async fetchTruthSocialArchive(targetCount: number): Promise<any[]> {
@@ -412,6 +416,57 @@ export class TrumpService {
     return { kind, urls };
   }
 
+  /**
+   * Enrichit les posts avec l'analyse IA (pertinence 0-10, résumé, justification).
+   * Sans clé API configurée (ou en cas d'échec du provider), les posts sont
+   * renvoyés tels quels : le scoring de criticité existant reste la référence.
+   */
+  private async enrichWithAi(posts: any[]): Promise<any[]> {
+    if (!isTrumpAiEnabled() || posts.length === 0) return posts;
+    try {
+      const analyses = await analyzeTrumpPostsWithAi(
+        posts.map((p) => ({ tweetId: p.tweetId, content: p.content || '' })),
+      );
+      if (!analyses) return posts;
+      return posts.map((p) => {
+        const a = analyses.get(p.tweetId);
+        if (!a) return p;
+        return {
+          ...p,
+          aiRelevance: a.relevance,
+          aiSummary: a.summary,
+          aiReason: a.reason,
+          aiBreaking: a.breaking,
+        };
+      });
+    } catch (e) {
+      logger.warn('[Trump] AI enrichment failed, keeping local scoring', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+      return posts;
+    }
+  }
+
+  /**
+   * Tri par pertinence : l'IA prime quand elle est active (aiRelevance), sinon
+   * la criticité entraînée. Les posts marqués breaking passent devant.
+   */
+  private sortByRelevance(posts: any[]): any[] {
+    const aiActive = isTrumpAiEnabled();
+    const hasAiScores = posts.some((p) => (p.aiRelevance || 0) > 0);
+    if (!aiActive || !hasAiScores) {
+      return [...posts].sort((a, b) => (b.criticality || 0) - (a.criticality || 0));
+    }
+    return [...posts].sort((a, b) => {
+      if (Boolean(a.aiBreaking) !== Boolean(b.aiBreaking)) return a.aiBreaking ? -1 : 1;
+      const aScore = a.aiRelevance || 0;
+      const bScore = b.aiRelevance || 0;
+      if (bScore !== aScore) return bScore - aScore;
+      if ((b.criticality || 0) !== (a.criticality || 0)) return (b.criticality || 0) - (a.criticality || 0);
+      return new Date(b.tweetDate).getTime() - new Date(a.tweetDate).getTime();
+    });
+  }
+
   private dedupePosts(posts: any[]): any[] {
     const seen = new Set<string>();
     return posts.filter((post) => {
@@ -509,6 +564,7 @@ export class TrumpService {
       try {
         const data = {
           content: t.content,
+          rawContent: t.rawContent || '',
           type: t.type,
           criticality: t.criticality,
           sentiment: t.sentiment,
@@ -516,6 +572,13 @@ export class TrumpService {
           likes: t.likes,
           retweets: t.retweets,
           isBreaking: t.isBreaking,
+          source: t.source || 'truthsocial',
+          mediaUrls: t.mediaUrls || '',
+          mediaType: t.mediaType || '',
+          isImageOnly: t.isImageOnly || false,
+          aiRelevance: t.aiRelevance || 0,
+          aiSummary: t.aiSummary || '',
+          aiReason: t.aiReason || '',
           url: t.url,
           tweetDate: t.tweetDate,
         };
@@ -540,22 +603,32 @@ export class TrumpService {
   async getCachedTrumpTweets(limit: number = 20): Promise<any[]> {
     try {
       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      // Quand l'IA est active on récupère un plus grand échantillon pour
+      // pouvoir filtrer/trier par pertinence sans vider la liste.
+      const aiActive = isTrumpAiEnabled();
+      const fetchTake = aiActive ? Math.min(limit * 3, 100) : limit;
       const tweets = await prisma.trumpTweet.findMany({
         where: {
           tweetDate: { gte: cutoff },
-          content: { not: '' },
+          OR: [{ content: { not: '' } }, { isImageOnly: true }],
         } as any,
-        take: limit,
+        take: fetchTake,
         orderBy: [{ tweetDate: 'desc' }],
       });
       if (tweets.length > 0) {
-        return tweets.map((tweet) => {
+        const mapped = tweets.map((tweet) => {
+          // Media-only posts (images/videos, empty text) get a display label.
+          const displayContent = tweet.content
+            || (tweet.isImageOnly
+              ? (tweet.mediaType === 'video' ? '🎬 [Publication vidéo]' : '📷 [Publication photo]')
+              : '');
+
           // Scoring is expensive (tens of thousands of phrase checks): memoize
           // per tweet id so repeated dashboard loads are free.
           const cacheKey = String(tweet.id);
           let criticality = this.criticalityCache.get(cacheKey);
           if (criticality === undefined) {
-            criticality = this.scoreCriticality(tweet.content, {
+            criticality = this.scoreCriticality(displayContent, {
               likes: tweet.likes,
               retweets: tweet.retweets,
             });
@@ -567,10 +640,21 @@ export class TrumpService {
 
           return annotateTrumpSeverity({
             ...tweet,
+            content: displayContent,
             criticality,
             isBreaking: isTrumpBreaking(criticality),
           });
         });
+
+        // Filtrage + classement par pertinence IA (uniquement si l'IA a déjà
+        // scoré des posts ; sinon on garde le tri chronologique actuel).
+        if (aiActive && mapped.some((t) => (t.aiRelevance || 0) > 0)) {
+          const minRelevance = getTrumpAiConfig()?.minRelevance ?? 1;
+          return this.sortByRelevance(mapped)
+            .filter((t) => (t.aiRelevance || 0) >= minRelevance)
+            .slice(0, limit);
+        }
+        return mapped;
       }
     } catch (e) {
       logger.error('Get cached trump tweets error', e);

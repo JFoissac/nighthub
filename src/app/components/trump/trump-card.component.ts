@@ -1,4 +1,4 @@
-import { Component, input, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TrumpItem } from '../../models';
 
@@ -17,16 +17,70 @@ import { TrumpItem } from '../../models';
           <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border"
                 [style.borderColor]="getTypeColor() + '50'"
                 [style.color]="getTypeColor()">{{ item()!.type }}</span>
-          <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border"
-                [class]="getCriticalityClass()">
-            {{ getCriticalityLabel() }} {{ item()!.criticality }}/10
+
+          <!-- Criticality badge + tooltip -->
+          <span class="relative inline-flex items-center gap-1 group">
+            <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border cursor-help"
+                  [class]="getCriticalityClass()"
+                  title="{{ getCriticalityTooltip() }}">
+              {{ getCriticalityLabel() }} {{ item()!.criticality }}/10
+            </span>
+            <span
+              class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-56 rounded-lg border border-[#2A2A3E] bg-[#16161F] p-2.5 text-[10px] leading-relaxed text-text-secondary opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100"
+            >
+              <span class="font-label-caps text-[9px] text-text-muted block mb-1">ÉCHELLE DE CRITICALITÉ</span>
+              <span class="flex items-center justify-between gap-2"><span class="text-green-400">● FAIBLE</span><span class="text-text-muted">0 – 3 · routine</span></span>
+              <span class="flex items-center justify-between gap-2"><span class="text-yellow-400">● MOYEN</span><span class="text-text-muted">4 – 5 · notable</span></span>
+              <span class="flex items-center justify-between gap-2"><span class="text-orange-400">● IMPORTANT</span><span class="text-text-muted">6 – 7 · répercussions</span></span>
+              <span class="flex items-center justify-between gap-2"><span class="text-red-400">● CRITIQUE</span><span class="text-text-muted">8 – 10 · alerte mondiale</span></span>
+            </span>
           </span>
+
           @if (item()!.isBreaking) {
             <span class="font-label-caps text-[9px] px-1.5 py-0.5 bg-warning/20 text-warning border border-warning/30 rounded animate-pulse">BREAKING</span>
           }
+          @if (item()!.aiRelevance) {
+            <span class="relative inline-flex items-center gap-1 group">
+              <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border cursor-help border-fuchsia-500/40 text-fuchsia-400"
+                    title="{{ getAiTooltip() }}">
+                IA {{ item()!.aiRelevance }}/10
+              </span>
+              <span
+                class="pointer-events-none absolute left-0 top-full z-50 mt-1.5 w-56 rounded-lg border border-[#2A2A3E] bg-[#16161F] p-2.5 text-[10px] leading-relaxed text-text-secondary opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100"
+              >
+                <span class="font-label-caps text-[9px] text-text-muted block mb-1">PERTINENCE IA</span>
+                @if (item()!.aiSummary) {
+                  <span class="block">{{ item()!.aiSummary }}</span>
+                }
+                @if (item()!.aiReason) {
+                  <span class="block mt-1 text-text-muted">{{ item()!.aiReason }}</span>
+                }
+              </span>
+            </span>
+          }
+          @if (item()!.isImageOnly) {
+            <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border border-[#2A2A3E] text-text-muted">
+              {{ item()!.mediaType === 'video' ? '🎬 VIDÉO' : '📷 PHOTO' }}
+            </span>
+          }
         </div>
 
-        <p class="text-[13px] text-text-secondary leading-snug line-clamp-3">{{ item()!.content }}</p>
+        @if (firstMediaUrl() && !mediaError()) {
+          <div class="mb-2 rounded-lg overflow-hidden border border-[#1E1E2E] bg-black/40">
+            <img
+              [src]="firstMediaUrl()"
+              alt="Média du post"
+              loading="lazy"
+              class="w-full max-h-44 object-cover"
+              (error)="onMediaError()"
+            >
+          </div>
+          @if (item()!.content) {
+            <p class="text-[13px] text-text-secondary leading-snug line-clamp-3 mb-1">{{ item()!.content }}</p>
+          }
+        } @else {
+          <p class="text-[13px] text-text-secondary leading-snug line-clamp-3">{{ item()!.content }}</p>
+        }
 
         <!-- Criticality bar -->
         <div class="mt-2 h-0.5 bg-[#1E1E2E] rounded-full overflow-hidden">
@@ -46,6 +100,37 @@ import { TrumpItem } from '../../models';
 })
 export class TrumpCardComponent {
   item = input<TrumpItem | null>(null);
+
+  mediaError = signal(false);
+
+  firstMediaUrl(): string | null {
+    const urls = this.item()?.mediaUrls;
+    if (!urls) return null;
+    const first = urls.split('\n')[0].trim();
+    return first || null;
+  }
+
+  onMediaError() {
+    this.mediaError.set(true);
+  }
+
+  getAiTooltip(): string {
+    const i = this.item();
+    if (!i) return '';
+    const parts: string[] = [];
+    if (i.aiSummary) parts.push(i.aiSummary);
+    if (i.aiReason) parts.push(i.aiReason);
+    if (parts.length === 0) return `Pertinence IA ${i.aiRelevance ?? 0}/10`;
+    return parts.join(' — ');
+  }
+
+  getCriticalityTooltip(): string {
+    const c = this.item()?.criticality ?? 0;
+    if (c >= 8) return 'CRITIQUE (8-10) : alerte mondiale — guerre, frappes, choc économique majeur';
+    if (c >= 6) return 'IMPORTANT (6-7) : répercussions notables — politique, économie, sécurité';
+    if (c >= 4) return 'MOYEN (4-5) : notable — sujet d\u2019actualité suivi';
+    return 'FAIBLE (0-3) : routine — communication courante';
+  }
 
   getTypeIcon(): string {
     const i = this.item();

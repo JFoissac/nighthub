@@ -69,6 +69,10 @@ vi.mock('../services/backend.runtime', () => ({
     fetchTrumpTweets: vi.fn(),
     getCachedTrumpTweets: vi.fn(),
   },
+  trumpNewsService: {
+    fetchTrumpNews: vi.fn(),
+    getCachedTrumpNews: vi.fn(),
+  },
   marketService: {
     getLiveMarketData: vi.fn(),
   },
@@ -84,7 +88,7 @@ vi.mock('../services/backend.runtime', () => ({
 }));
 
 import router from './api.routes';
-import { weatherService, newsService, youtubeService, twitchService, trumpService, aggregatorService } from '../services/backend.runtime';
+import { weatherService, newsService, youtubeService, twitchService, trumpService, trumpNewsService, aggregatorService } from '../services/backend.runtime';
 import { prisma } from '../db/prisma.client';
 
 function getMountedPrefix(layer: any): string {
@@ -247,6 +251,30 @@ describe('API Routes', () => {
       await handler(req, res);
       expect(trumpService.getCachedTrumpTweets).toHaveBeenCalledWith(15);
       expect(res.json).toHaveBeenCalledWith([{ content: 'T' }]);
+    });
+  });
+
+  describe('GET /trump/news', () => {
+    it('returns cached trump news with limit', async () => {
+      const handler = getHandler('/trump/news', 'get');
+      const res = mockRes();
+      const req = { query: { limit: '8' } } as any;
+      (trumpNewsService.getCachedTrumpNews as any).mockResolvedValue([{ title: 'N1', isBreaking: true }]);
+
+      await handler(req, res);
+      expect(trumpNewsService.getCachedTrumpNews).toHaveBeenCalledWith(8);
+      expect(res.json).toHaveBeenCalledWith([{ title: 'N1', isBreaking: true }]);
+    });
+
+    it('returns 500 on error', async () => {
+      const handler = getHandler('/trump/news', 'get');
+      const res = mockRes();
+      const req = { query: {} } as any;
+      (trumpNewsService.getCachedTrumpNews as any).mockRejectedValue(new Error('fail'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Failed to fetch Trump news' });
     });
   });
 
@@ -525,6 +553,19 @@ describe('API Routes', () => {
       await handler(req, res);
       expect(trumpService.fetchTrumpTweets).toHaveBeenCalledWith(20);
       expect(res.json).toHaveBeenCalledWith({ success: true, count: 1 });
+    });
+  });
+
+  describe('POST /refresh/trump-news', () => {
+    it('refreshes trump news and returns count', async () => {
+      const handler = getHandler('/refresh/trump-news', 'post');
+      const res = mockRes();
+      const req = {} as any;
+      (trumpNewsService.fetchTrumpNews as any).mockResolvedValue([{ title: 'N1' }, { title: 'N2' }]);
+
+      await handler(req, res);
+      expect(trumpNewsService.fetchTrumpNews).toHaveBeenCalledWith(20);
+      expect(res.json).toHaveBeenCalledWith({ success: true, count: 2 });
     });
   });
 

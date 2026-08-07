@@ -28,6 +28,29 @@ export interface TrumpItem {
   severityLabel?: 'FAIBLE' | 'MOYEN' | 'IMPORTANT' | 'CRITIQUE';
   tweetDate: Date;
   timestamp?: Date;
+  mediaUrls?: string;
+  mediaType?: string;
+  isImageOnly?: boolean;
+  aiRelevance?: number;
+  aiSummary?: string;
+  aiReason?: string;
+  aiBreaking?: boolean;
+}
+
+export interface TrumpNewsItem {
+  id: string;
+  title: string;
+  source: string;
+  url: string;
+  summary: string;
+  pubDate: Date;
+  criticality: number;
+  aiRelevance?: number;
+  aiSummary?: string;
+  aiReason?: string;
+  isBreaking: boolean;
+  matchedKeywords?: string;
+  isNew?: boolean;
 }
 
 export interface WeatherDay {

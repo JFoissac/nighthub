@@ -139,6 +139,8 @@ describe('DashboardComponent', () => {
       getNews: jest.fn().mockReturnValue(of([])),
       getTrumpTweets: jest.fn().mockReturnValue(of([])),
       extractNewsArticle: jest.fn().mockReturnValue(of(null)),
+      getAuthStatus: jest.fn().mockReturnValue(of({ youtube: false, twitch: false })),
+      getTwitchPlayback: jest.fn().mockReturnValue(of({ anonymous: true })),
     };
 
     mockVideosStore = createMockStore();

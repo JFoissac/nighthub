@@ -39,6 +39,9 @@ model TrumpTweet {
   mediaUrls    String   @default("")
   mediaType    String   @default("")
   isImageOnly  Boolean  @default(false)
+  aiRelevance  Int      @default(0)
+  aiSummary    String   @default("")
+  aiReason     String   @default("")
   rawPayload   String   @default("")
   url          String   @default("")
   tweetDate    DateTime @default(now())
@@ -47,6 +50,27 @@ model TrumpTweet {
 
   @@index([fetchedAt])
   @@index([criticality])
+}
+
+model TrumpNewsItem {
+  id              String   @id @default(cuid())
+  title           String
+  source          String
+  url             String   @unique
+  summary         String   @default("")
+  pubDate         DateTime @default(now())
+  criticality     Int      @default(0)
+  aiRelevance     Int      @default(0)
+  aiSummary       String   @default("")
+  aiReason        String   @default("")
+  isBreaking      Boolean  @default(false)
+  matchedKeywords String   @default("")
+  fetchedAt       DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@index([pubDate])
+  @@index([isBreaking])
+  @@index([fetchedAt])
 }
 
 model TwitchStream {

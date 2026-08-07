@@ -6,7 +6,7 @@ import newsRoutes from './news.routes';
 import preferencesRoutes from './preferences.routes';
 import marketRoutes from './market.routes';
 import { validateCity, validateLimit } from './route.utils';
-import { weatherService, trumpService, youtubeService } from '../services/backend.runtime';
+import { weatherService, trumpService, youtubeService, trumpNewsService } from '../services/backend.runtime';
 import { logger } from '../utils/logger';
 
 async function getTrump(req: any, res: any) {
@@ -26,6 +26,27 @@ async function refreshTrump(_req: any, res: any) {
   } catch (error) {
     logger.error('Refresh Trump failed', error, { route: '/refresh/trump' });
     res.status(500).json({ error: 'Failed to refresh Trump tweets' });
+  }
+}
+
+async function getTrumpNews(req: any, res: any) {
+  try {
+    const limit = validateLimit(req.query.limit);
+    const items = await trumpNewsService.getCachedTrumpNews(limit);
+    res.json(items);
+  } catch (error) {
+    logger.error('Get Trump news failed', error, { route: '/trump/news' });
+    res.status(500).json({ error: 'Failed to fetch Trump news' });
+  }
+}
+
+async function refreshTrumpNews(_req: any, res: any) {
+  try {
+    const items = await trumpNewsService.fetchTrumpNews(20);
+    res.json({ success: true, count: items.length });
+  } catch (error) {
+    logger.error('Refresh Trump news failed', error, { route: '/refresh/trump-news' });
+    res.status(500).json({ error: 'Failed to refresh Trump news' });
   }
 }
 
@@ -64,8 +85,10 @@ export function createApiRouter() {
   router.use('/market', marketRoutes);
   router.get('/videos', getVideos);
   router.get('/trump', getTrump);
+  router.get('/trump/news', getTrumpNews);
   router.get('/weather', getWeather);
   router.post('/refresh/trump', refreshTrump);
+  router.post('/refresh/trump-news', refreshTrumpNews);
 
   return router;
 }
