@@ -158,13 +158,7 @@
                     @if (ticker.sparkline7d?.length) {
                       <div class="mb-2">
                         <div class="relative">
-                          <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="64"></app-sparkline>
-                          <!-- Prix fixes aux extrémités : premier à gauche, dernier à droite -->
-                          @if ((ticker.sparkline7d?.length || 0) > 1) {
-                            @let dots = sparklineDots(ticker.sparkline7d || [], 200, 64);
-                            <span class="spark-edge-price left" [style.top]="dots[0].yPct + '%'">${{ formatPrice(dots[0].price) }}</span>
-                            <span class="spark-edge-price right" [style.top]="dots[dots.length - 1].yPct + '%'">${{ formatPrice(dots[dots.length - 1].price) }}</span>
-                          }
+                          <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="64" [showEdges]="true"></app-sparkline>
                         </div>
                         <div class="flex justify-between font-mono text-[9px] text-text-muted/70 mt-0.5">
                           <span>{{ sparklineRange(ticker.sparkline7d || []) }}</span>

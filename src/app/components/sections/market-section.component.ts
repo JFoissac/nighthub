@@ -73,20 +73,6 @@ export class MarketSectionComponent implements OnInit, OnDestroy {
     return '#22d3ee';                    // avidité extrême
   }
 
-  /** Points en % (HTML absolute, non étirés par le SVG preserveAspectRatio=none). */
-  sparklineDots(data: number[], width: number, height: number): { xPct: number; yPct: number; price: number }[] {
-    if (!data.length) return [];
-    const min = Math.min(...data);
-    const max = Math.max(...data);
-    const range = max - min || 1;
-    const step = width / (data.length - 1 || 1);
-    return data.map((val, i) => ({
-      xPct: (i * step / width) * 100,
-      yPct: ((height - ((val - min) / range) * (height - 4) - 2) / height) * 100,
-      price: val,
-    }));
-  }
-
   formatPrice(price: number): string {
     if (price >= 1000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
     if (price >= 1) return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

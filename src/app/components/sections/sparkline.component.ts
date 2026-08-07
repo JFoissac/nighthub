@@ -1,5 +1,37 @@
 import { Component, input, viewChild, ElementRef, AfterViewInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
-import { Chart } from 'chart.js/auto';
+import { Chart, Plugin } from 'chart.js/auto';
+
+/** Dessine les prix min/max aux extrémités réelles de la courbe (canvas = alignement parfait). */
+const edgePricePlugin: Plugin = {
+  id: 'edgePrices',
+  afterDatasetsDraw(chart) {
+    const meta = chart.getDatasetMeta(0);
+    const dataset = chart.data.datasets[0]?.data as number[] | undefined;
+    if (!dataset || dataset.length < 2) return;
+    const first = meta.data[0];
+    const last = meta.data[dataset.length - 1];
+    if (!first || !last) return;
+    const ctx = chart.ctx;
+    const fmt = (v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+    ctx.save();
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.textBaseline = 'middle';
+    // Prix de début (gauche)
+    const leftText = fmt(dataset[0]);
+    ctx.fillStyle = 'rgba(10,10,14,0.85)';
+    ctx.fillRect(first.x - 4, first.y - 6, ctx.measureText(leftText).width + 8, 12);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(leftText, first.x, first.y);
+    // Prix de fin (droite)
+    const rightText = fmt(dataset[dataset.length - 1]);
+    const w = ctx.measureText(rightText).width;
+    ctx.fillStyle = 'rgba(10,10,14,0.85)';
+    ctx.fillRect(last.x - w - 4, last.y - 6, w + 8, 12);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(rightText, last.x - w, last.y);
+    ctx.restore();
+  },
+};
 
 /** Sparkline Chart.js réutilisable : courbe lissée animée, points, tooltip prix. */
 @Component({
@@ -12,6 +44,7 @@ export class SparklineComponent implements AfterViewInit, OnDestroy {
   readonly data = input<number[]>([]);
   readonly positive = input(true);
   readonly height = input(32);
+  readonly showEdges = input(false);
   readonly canvas = viewChild<ElementRef<HTMLCanvasElement>>('canvas');
   private chart?: Chart;
 
@@ -64,6 +97,7 @@ export class SparklineComponent implements AfterViewInit, OnDestroy {
           y: { display: false },
         },
       },
+      plugins: this.showEdges() ? [edgePricePlugin] : [],
     });
   }
 
