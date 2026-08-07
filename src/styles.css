@@ -117,6 +117,41 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; letter-spacin
 @keyframes sparkline-point-in {
   to { opacity: 1; }
 }
+/* Points HTML ronds par-dessus le SVG (non étirés par preserveAspectRatio=none) */
+.sparkline-point-abs {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #22c55e;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  animation: sparkline-point-in 0.25s ease-out forwards;
+  pointer-events: none;
+}
+.sparkline-point-abs.neg { background: #ef4444; }
+.sparkline-point-abs.on {
+  width: 7px;
+  height: 7px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+  z-index: 2;
+}
+.spark-tooltip {
+  position: absolute;
+  top: -14px;
+  transform: translateX(-50%);
+  background: #1E1E2E;
+  border: 1px solid #2A2A3E;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #e2e8f0;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 3;
+}
 .market-expand {
   animation: fadeInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

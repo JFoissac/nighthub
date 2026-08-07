@@ -35,11 +35,22 @@ export class MarketSectionComponent implements OnInit, OnDestroy {
     this.store.reload();
     this.loadSentiment();
     this.loadMarketNews();
+    // Longueurs réelles des courbes au premier rendu (mini sparklines GRID/LIST)
+    setTimeout(() => this.measureSparklineLengths(), 300);
     this.refreshInterval = setInterval(() => {
       this.store.reload();
       this.loadSentiment();
       this.loadMarketNews();
     }, 60000);
+  }
+
+  private measureSparklineLengths() {
+    document.querySelectorAll<SVGPathElement>('.sparkline-draw').forEach((p) => {
+      try {
+        const len = Math.max(1, p.getTotalLength());
+        p.style.setProperty('--draw-length', String(len));
+      } catch { /* path non rendu */ }
+    });
   }
 
   ngOnDestroy() {
@@ -62,17 +73,8 @@ export class MarketSectionComponent implements OnInit, OnDestroy {
 
   toggleExpand(ticker: MarketTicker) {
     this.expanded.update(current => current?.symbol === ticker.symbol ? null : ticker);
-    // Après le rendu du bloc déplié : calculer la LONGUEUR RÉELLE de chaque
-    // courbe (getTotalLength) pour que l'animation de tracé soit visible
-    // (une valeur fixe ne correspond pas au path réel → effet invisible).
-    setTimeout(() => {
-      document.querySelectorAll<SVGPathElement>('.sparkline-draw').forEach((p) => {
-        try {
-          const len = Math.max(1, p.getTotalLength());
-          p.style.setProperty('--draw-length', String(len));
-        } catch { /* path non rendu */ }
-      });
-    }, 0);
+    // Après le rendu du bloc déplié : longueur réelle de la courbe (getTotalLength)
+    setTimeout(() => this.measureSparklineLengths(), 0);
   }
 
   sentimentColor(score: number): string {
@@ -117,6 +119,37 @@ export class MarketSectionComponent implements OnInit, OnDestroy {
       x: i * step,
       y: height - ((val - min) / range) * (height - 4) - 2,
     }));
+  }
+
+  /** Points en % (HTML absolute, non étirés par le SVG preserveAspectRatio=none). */
+  sparklineDots(data: number[], width: number, height: number): { xPct: number; yPct: number; price: number }[] {
+    if (!data.length) return [];
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min || 1;
+    const step = width / (data.length - 1 || 1);
+    return data.map((val, i) => ({
+      xPct: (i * step / width) * 100,
+      yPct: ((height - ((val - min) / range) * (height - 4) - 2) / height) * 100,
+      price: val,
+    }));
+  }
+
+  /** Index du point le plus proche de la souris (tooltip prix au survol). */
+  hoverIndex = -1;
+
+  onGraphHover(event: MouseEvent, ticker: MarketTicker) {
+    const svg = (event.currentTarget as SVGSVGElement);
+    const rect = svg.getBoundingClientRect();
+    const xRatio = (event.clientX - rect.left) / rect.width;
+    const data = ticker.sparkline7d || [];
+    if (!data.length) return;
+    const idx = Math.round(xRatio * (data.length - 1));
+    this.hoverIndex = Math.max(0, Math.min(data.length - 1, idx));
+  }
+
+  onGraphLeave() {
+    this.hoverIndex = -1;
   }
 
   formatPrice(price: number): string {
