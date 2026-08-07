@@ -172,10 +172,20 @@
                               <stop offset="100%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0"></stop>
                             </linearGradient>
                           </defs>
+                          <!-- Grille : 3 lignes horizontales + labels min/mid/max -->
+                          <line x1="0" y1="1" x2="200" y2="1" stroke="#1E1E2E" stroke-width="1"></line>
+                          <line x1="0" y1="32" x2="200" y2="32" stroke="#1E1E2E" stroke-width="1"></line>
+                          <line x1="0" y1="63" x2="200" y2="63" stroke="#1E1E2E" stroke-width="1"></line>
                           <polygon [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.points]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></polygon>
                           <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
                             stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
                             [attr.d]="sparklinePath(ticker.sparkline7d || [], 200, 64)"></path>
+                          <!-- Points progressifs en cascade -->
+                          @for (pt of sparklinePointsArray(ticker.sparkline7d || [], 200, 64); track $index) {
+                            <circle class="sparkline-point" [attr.cx]="pt.x" [attr.cy]="pt.y" r="2.5"
+                              [attr.fill]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
+                              [style.animation-delay]="(0.7 + $index * 0.06) + 's'"></circle>
+                          }
                         </svg>
                         <div class="flex justify-between font-mono text-[9px] text-text-muted/70 mt-0.5">
                           <span>{{ sparklineRange(ticker.sparkline7d || []) }}</span>
