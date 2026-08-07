@@ -1,7 +1,16 @@
 # NightHub — Plan d'Implémentation & Correctifs
 
-**Date :** 25 avril 2026
-**Statut :** En cours — Phase de consolidation architecture + tests
+**Date :** 25 avril 2026 (dernière mise à jour : 7 août 2026)
+**Statut :** En cours — Consolidation (presque toutes les phases faites) + chantier perf chargement au lancement
+
+---
+
+## État actuel (7 août 2026)
+
+- **Perf boot réglée** (commit `4888db6`) : boot 60–120s → **5.8s** (listen-first + background tasks + snapshot Trump persistant + preWarm gate < 1h). Détails : `docs/BACKEND_REFACTOR.md` et skill `node-server-boot-performance` (réf. nighthub-boot-fix.md).
+- **Chantier en cours : chargement des données au lancement du back.** Le serveur écoute vite mais le premier remplissage des caches (Twitch GQL, YouTube RSS, X/Nitter, Trump, news, dashboard snapshot) prend du temps au démarrage → le dashboard peut être vide/stale au premier affichage. Review perf en cours (kimi) pour mesurer et prioriser les correctifs.
+- **Changements NON commités dans le repo** (au 07/08) : `server/src/routes/twitch.routes.ts`, `server/src/services/trump.service.ts`, `server/src/services/twitch.service.ts`, `server/data/trump-trained-profile.json`, frontend `settings-sources`, `stream-player-panel`, `trump-card`, `models/index.ts`, `api.service.ts`. À commiter/vérifier.
+- **Frontend** : Angular 21.2 + Nx 22.6, port dev 4201 (API backend 3001, CORS 4200+4201).
 
 ---
 
@@ -181,11 +190,13 @@ OPENWEATHERMAP_API_KEY=a74ad14a60941c71f4640e590912d3ac
 
 ## Phase actuelle : Consolidation
 
-1. ✅ Tests backend (youtube, twitter, news, aggregator, api.routes)
+1. ✅ Tests backend (youtube, twitter, news, aggregator, api.routes + trump.*, weather, twitch, market)
 2. ✅ Intégration backend dans Nx (`server/project.json`, tags, boundaries)
-3. ✅ Tests frontend (video-card, tweet-card, rss-detect-modal, api.service, header, weather, dashboard)
+3. ✅ Tests frontend (video-card, tweet-card, rss-detect-modal, api.service, header, weather, dashboard, ai-news, trump)
 4. ✅ Implémentation solution YouTube hybride (RSS + API v3 + Piped fallback)
 5. ✅ Validation Zod sur les routes (middleware `validateBody`)
 6. ✅ Retry RSS avec jitter + fallback Piped pour les durées
-7. ✅ Refactoring routes backend (extraction modulaire)
-8. ⏳ Intégration backend dans workspace package manager
+7. ✅ Refactoring routes backend (extraction modulaire, controllers/middleware/jobs)
+8. ✅ Perf boot (listen-first, snapshot Trump, preWarm gate) — commit 4888db6
+9. ⏳ Intégration backend dans workspace package manager
+10. 🔄 **Perf chargement des données au lancement** : dashboard utilisable immédiatement (review kimi en cours → correctifs P0/P1/P2)
