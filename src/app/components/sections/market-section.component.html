@@ -1,4 +1,4 @@
-    <section class="lg:col-span-5 neo-glass rounded overflow-hidden flex flex-col fade-in h-[424px]" style="animation-delay: 0ms">
+    <section role="region" aria-label="Marchés" class="lg:col-span-5 neo-glass rounded overflow-hidden flex flex-col fade-in h-[424px]" style="animation-delay: 0ms">
       <div class="px-4 py-3 border-b border-[#1E1E2E] flex items-center justify-between bg-[#131318]/40 flex-shrink-0">
         <div class="flex items-center gap-2">
           <svg class="w-3.5 h-3.5 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -35,7 +35,7 @@
                 <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)">
                   <div class="flex items-center justify-between mb-1.5">
                     <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
-                    <span class="font-label-caps text-[8px] text-text-muted">{{ ticker.name }}</span>
+                    <span class="font-label-caps text-[10px] text-text-muted">{{ ticker.name }}</span>
                   </div>
                   @if (ticker.sparkline7d?.length) {
                     <div class="mb-1.5">
@@ -78,7 +78,7 @@
                   <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)">
                     <div class="flex items-center justify-between mb-1.5">
                       <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
-                      <span class="font-label-caps text-[8px] text-text-muted truncate max-w-[60%]">{{ ticker.name }}</span>
+                      <span class="font-label-caps text-[10px] text-text-muted truncate max-w-[60%]">{{ ticker.name }}</span>
                     </div>
                     @if (ticker.sparkline7d?.length) {
                       <div class="mb-1.5">
@@ -108,7 +108,7 @@
           @if (store.crypto().length) {
             <div class="break-inside-avoid">
             <div class="px-3 pt-2 pb-1"><span class="font-label-caps text-[9px] text-text-muted">CRYPTO</span></div>
-            <div class="px-4 py-1.5 flex items-center text-[8px] font-label-caps text-text-muted opacity-50">
+            <div class="px-4 py-1.5 flex items-center text-[10px] font-label-caps text-text-muted opacity-50">
               <span class="flex-1 min-w-0">TICKER / NAME</span>
               <span class="w-20 text-right">PRICE</span>
               <span class="w-14 text-right">24H</span>
@@ -178,7 +178,7 @@
             @for (group of store.groupedStocks(); track group.key) {
               <div class="break-inside-avoid">
               <div class="px-3 pt-3 pb-1 border-t border-[#1E1E2E]"><span class="font-label-caps text-[9px] text-text-muted">{{ group.label }}</span></div>
-              <div class="px-4 py-1.5 flex items-center text-[8px] font-label-caps text-text-muted opacity-50">
+              <div class="px-4 py-1.5 flex items-center text-[10px] font-label-caps text-text-muted opacity-50">
                 <span class="flex-1 min-w-0">TICKER / NAME</span>
                 <span class="w-20 text-right">PRICE</span>
                 <span class="w-14 text-right">24H</span>

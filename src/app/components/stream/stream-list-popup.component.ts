@@ -39,12 +39,12 @@ import { TwitchStream } from '../../models';
                 <p class="text-[10px] text-text-muted truncate">{{ stream.title }}</p>
               </div>
               <div class="flex flex-col items-end gap-1 flex-shrink-0">
-                <span class="font-label-caps text-[8px] px-1 py-0.5 rounded"
+                <span class="font-label-caps text-[10px] px-1 py-0.5 rounded"
                   [class]="stream.gameName === 'YouTube Live' ? 'bg-red-500/20 text-red-400' : 'bg-secondary/20 text-secondary'">
                   {{ stream.gameName === 'YouTube Live' ? 'YOUTUBE' : 'TWITCH' }}
                 </span>
                 @if (stream.viewerCount) {
-                  <span class="font-label-caps text-[8px] text-text-muted">{{ stream.viewerCount }} viewers</span>
+                  <span class="font-label-caps text-[10px] text-text-muted">{{ stream.viewerCount }} viewers</span>
                 }
               </div>
             </button>

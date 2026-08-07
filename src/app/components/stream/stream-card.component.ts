@@ -9,17 +9,21 @@ import { TwitchStream } from '../../models';
   imports: [CommonModule],
   template: `
     @if (stream()) {
-      <div class="min-w-[220px] group cursor-pointer flex-shrink-0 snap-start" (click)="select.emit(stream()!)">
+      <div class="min-w-[220px] group cursor-pointer flex-shrink-0 snap-start focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+           role="button" tabindex="0"
+           (click)="select.emit(stream()!)"
+           (keydown.enter)="select.emit(stream()!)"
+           (keydown.space)="select.emit(stream()!); $event.preventDefault()">
         <div class="relative aspect-video rounded overflow-hidden mb-2 border border-[#1E1E2E] group-hover:border-primary transition-colors">
           <img [src]="stream()!.thumbnailUrl" [alt]="stream()!.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
           <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
           @if (stream()!.isLive) {
-            <div class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-red-600 text-[8px] font-bold rounded text-white">
+            <div class="absolute top-2 left-2 flex items-center gap-1 px-1.5 py-0.5 bg-red-600 text-[10px] font-bold rounded text-white">
               <span class="w-1.5 h-1.5 bg-white rounded-full animate-pulse flex-shrink-0"></span>
               LIVE
             </div>
           }
-          <div class="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/60 text-[8px] font-bold rounded text-white backdrop-blur">
+          <div class="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/60 text-[10px] font-bold rounded text-white backdrop-blur">
             {{ formatViewers(stream()!.viewerCount) }}
           </div>
         </div>

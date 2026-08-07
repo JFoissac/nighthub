@@ -27,7 +27,7 @@ import { AiNewsItem } from '../../models';
           }
           <span class="font-label-caps text-[9px] text-text-muted">{{ item()!.pubDate | date:'MMM d' }}</span>
           @if (item()!.categories) {
-            <span class="font-label-caps text-[8px] text-text-muted/60 truncate max-w-[120px]" [title]="item()!.categories!">
+            <span class="font-label-caps text-[10px] text-text-muted/60 truncate max-w-[120px]" [title]="item()!.categories!">
               · {{ item()!.categories }}
             </span>
           }

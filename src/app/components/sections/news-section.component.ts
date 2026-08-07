@@ -105,7 +105,7 @@ function calculateRelevanceScore(
               <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
             </svg>
           }
-          <span class="font-label-caps text-[8px] px-1 py-0.5 rounded"
+          <span class="font-label-caps text-[10px] px-1 py-0.5 rounded"
             [class]="sortMode() === 'date' ? 'bg-primary/20 text-primary' : 'bg-yellow-500/20 text-yellow-400'"
           >{{ sortMode() === 'date' ? 'DATE' : 'PERTINENCE' }}</span>
           <button

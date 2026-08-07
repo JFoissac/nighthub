@@ -76,7 +76,7 @@ import { UserPreferences } from '../../models';
         </button>
         <button
           (click)="toggleOled()"
-          class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
+          class="p-2.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
           [title]="isOled() ? 'Disable OLED mode' : 'Enable OLED mode'"
           [attr.aria-pressed]="isOled()"
           aria-label="Toggle OLED dark mode"
@@ -86,11 +86,8 @@ import { UserPreferences } from '../../models';
             <path d="M8 21h8M12 17v4"/>
           </svg>
         </button>
-        <div class="relative hidden md:block">
-          <input role="search" aria-label="Rechercher" class="bg-[#131318] border border-[#1E1E2E] rounded px-3 py-1 font-label-caps text-[10px] focus:outline-none focus:border-primary transition-all w-40 text-text-secondary placeholder-text-muted" placeholder="TERMINAL SEARCH..." type="text"/>
-        </div>
         <button (click)="openOptions.emit()"
-                class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
+                class="p-2.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
                 aria-label="Options">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3"/>
@@ -98,7 +95,7 @@ import { UserPreferences } from '../../models';
           </svg>
         </button>
         <button (click)="openSources.emit()"
-                class="p-1.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
+                class="p-2.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
                 aria-label="Sources">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2a7 7 0 0 0-7 7v3a4 4 0 0 0 4 4h1v-4H9a2 2 0 0 1-2-2V9a5 5 0 0 1 10 0v1a2 2 0 0 1-2 2h-1v4h1a4 4 0 0 0 4-4V9a7 7 0 0 0-7-7z"/>

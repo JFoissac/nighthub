@@ -117,6 +117,16 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; letter-spacin
   animation: skeleton 1.5s infinite;
 }
 
+/* === Accessibilité : respect de prefers-reduced-motion === */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* === Card hover glow === */
 .card-glow:hover {
   box-shadow: 0 0 0 1px var(--border-glow), 0 8px 32px -8px rgba(192, 193, 255, 0.12);
