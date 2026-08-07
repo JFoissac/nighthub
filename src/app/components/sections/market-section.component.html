@@ -67,12 +67,17 @@
                     <span class="font-label-caps text-[10px] text-text-muted">{{ ticker.name }}</span>
                   </div>
                   @if (ticker.sparkline7d?.length) {
-                    <div class="mb-1.5">
+                    <div class="mb-1.5 relative">
                       <svg class="w-full h-8" viewBox="0 0 100 32" preserveAspectRatio="none">
                         <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
                           stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"
                           [attr.d]="sparklinePath(ticker.sparkline7d || [], 100, 32)"></path>
                       </svg>
+                      @for (pt of sparklineDots(ticker.sparkline7d || [], 100, 32); track $index) {
+                        <span class="sparkline-point-abs mini" [class.neg]="ticker.changePercent7d < 0"
+                          [style.left]="pt.xPct + '%'" [style.top]="pt.yPct + '%'"
+                          [style.animation-delay]="(0.4 + $index * 0.04) + 's'"></span>
+                      }
                     </div>
                   }
                   <div class="flex items-end justify-between">
@@ -110,12 +115,17 @@
                       <span class="font-label-caps text-[10px] text-text-muted truncate max-w-[60%]">{{ ticker.name }}</span>
                     </div>
                     @if (ticker.sparkline7d?.length) {
-                      <div class="mb-1.5">
+                      <div class="mb-1.5 relative">
                         <svg class="w-full h-8" viewBox="0 0 100 32" preserveAspectRatio="none">
                           <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
                             stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"
                             [attr.d]="sparklinePath(ticker.sparkline7d || [], 100, 32)"></path>
                         </svg>
+                        @for (pt of sparklineDots(ticker.sparkline7d || [], 100, 32); track $index) {
+                          <span class="sparkline-point-abs mini" [class.neg]="ticker.changePercent7d < 0"
+                            [style.left]="pt.xPct + '%'" [style.top]="pt.yPct + '%'"
+                            [style.animation-delay]="(0.4 + $index * 0.04) + 's'"></span>
+                        }
                       </div>
                     }
                     <div class="flex items-end justify-between">
@@ -183,7 +193,7 @@
                               [attr.x2]="(hoverIndex() / ((ticker.sparkline7d?.length || 1) - 1)) * 200"
                               y1="0" y2="64" stroke="#64748b" stroke-width="0.75" stroke-dasharray="2 2"></line>
                           }
-                          <polygon [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.points]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></polygon>
+                          <path fill="none" [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.d]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></path>
                           <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
                             stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
                             [attr.d]="sparklinePath(ticker.sparkline7d || [], 200, 64)"></path>
@@ -277,7 +287,7 @@
                                 <stop offset="100%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0"></stop>
                               </linearGradient>
                             </defs>
-                            <polygon [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.points]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></polygon>
+                            <path fill="none" [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.d]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></path>
                             <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
                               stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
                               [attr.d]="sparklinePath(ticker.sparkline7d || [], 200, 64)"></path>

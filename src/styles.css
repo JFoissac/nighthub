@@ -130,6 +130,7 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; letter-spacin
   pointer-events: none;
 }
 .sparkline-point-abs.neg { background: #ef4444; }
+.sparkline-point-abs.mini { width: 4px; height: 4px; }
 .sparkline-point-abs.on {
   width: 7px;
   height: 7px;
