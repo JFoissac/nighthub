@@ -67,17 +67,8 @@
                     <span class="font-label-caps text-[10px] text-text-muted">{{ ticker.name }}</span>
                   </div>
                   @if (ticker.sparkline7d?.length) {
-                    <div class="mb-1.5 relative">
-                      <svg class="w-full h-8" viewBox="0 0 100 32" preserveAspectRatio="none">
-                        <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
-                          stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"
-                          [attr.d]="sparklinePath(ticker.sparkline7d || [], 100, 32)"></path>
-                      </svg>
-                      @for (pt of sparklineDots(ticker.sparkline7d || [], 100, 32); track $index) {
-                        <span class="sparkline-point-abs mini" [class.neg]="ticker.changePercent7d < 0"
-                          [style.left]="pt.xPct + '%'" [style.top]="pt.yPct + '%'"
-                          [style.animation-delay]="(0.4 + $index * 0.04) + 's'"></span>
-                      }
+                    <div class="mb-1.5">
+                      <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="32"></app-sparkline>
                     </div>
                   }
                   <div class="flex items-end justify-between">
@@ -115,17 +106,8 @@
                       <span class="font-label-caps text-[10px] text-text-muted truncate max-w-[60%]">{{ ticker.name }}</span>
                     </div>
                     @if (ticker.sparkline7d?.length) {
-                      <div class="mb-1.5 relative">
-                        <svg class="w-full h-8" viewBox="0 0 100 32" preserveAspectRatio="none">
-                          <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
-                            stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"
-                            [attr.d]="sparklinePath(ticker.sparkline7d || [], 100, 32)"></path>
-                        </svg>
-                        @for (pt of sparklineDots(ticker.sparkline7d || [], 100, 32); track $index) {
-                          <span class="sparkline-point-abs mini" [class.neg]="ticker.changePercent7d < 0"
-                            [style.left]="pt.xPct + '%'" [style.top]="pt.yPct + '%'"
-                            [style.animation-delay]="(0.4 + $index * 0.04) + 's'"></span>
-                        }
+                      <div class="mb-1.5">
+                        <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="32"></app-sparkline>
                       </div>
                     }
                     <div class="flex items-end justify-between">
@@ -175,52 +157,18 @@
                   <div class="px-4 py-3 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80 market-expand">
                     @if (ticker.sparkline7d?.length) {
                       <div class="mb-2">
-                        <div class="relative" (mousemove)="onGraphHover($event, ticker)" (mouseleave)="onGraphLeave()">
-                        <svg class="w-full h-16" viewBox="0 0 200 64" preserveAspectRatio="none">
-                          <defs>
-                            <linearGradient [attr.id]="'grad-'+ticker.symbol" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0.3"></stop>
-                              <stop offset="100%" [attr.stop-color]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'" stop-opacity="0"></stop>
-                            </linearGradient>
-                          </defs>
-                          <!-- Grille : 3 lignes horizontales -->
-                          <line x1="0" y1="1" x2="200" y2="1" stroke="#1E1E2E" stroke-width="1"></line>
-                          <line x1="0" y1="32" x2="200" y2="32" stroke="#1E1E2E" stroke-width="1"></line>
-                          <line x1="0" y1="63" x2="200" y2="63" stroke="#1E1E2E" stroke-width="1"></line>
-                          <!-- Marqueur vertical au survol -->
-                          @if (hoverIndex() >= 0) {
-                            <line [attr.x1]="(hoverIndex() / ((ticker.sparkline7d?.length || 1) - 1)) * 200"
-                              [attr.x2]="(hoverIndex() / ((ticker.sparkline7d?.length || 1) - 1)) * 200"
-                              y1="0" y2="64" stroke="#64748b" stroke-width="0.75" stroke-dasharray="2 2"></line>
+                        <div class="relative">
+                          <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="64"></app-sparkline>
+                          <!-- Prix fixes aux extrémités : premier à gauche, dernier à droite -->
+                          @if ((ticker.sparkline7d?.length || 0) > 1) {
+                            @let dots = sparklineDots(ticker.sparkline7d || [], 200, 64);
+                            <span class="spark-edge-price left" [style.top]="dots[0].yPct + '%'">${{ formatPrice(dots[0].price) }}</span>
+                            <span class="spark-edge-price right" [style.top]="dots[dots.length - 1].yPct + '%'">${{ formatPrice(dots[dots.length - 1].price) }}</span>
                           }
-                          <path fill="none" [attr.fill]="'url(#grad-'+ticker.symbol+')'" [attr.d]="sparklineArea(ticker.sparkline7d || [], 200, 64)"></path>
-                          <path class="sparkline-draw" fill="none" [attr.stroke]="ticker.changePercent7d >= 0 ? '#22c55e' : '#ef4444'"
-                            stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"
-                            [attr.d]="sparklinePath(ticker.sparkline7d || [], 200, 64)"></path>
-                        </svg>
-                        <!-- Points HTML ronds (non étirés) -->
-                        @for (pt of sparklineDots(ticker.sparkline7d || [], 200, 64); track $index) {
-                          <span class="sparkline-point-abs" [class.neg]="ticker.changePercent7d < 0" [class.on]="hoverIndex() === $index"
-                            [style.left]="pt.xPct + '%'" [style.top]="pt.yPct + '%'"
-                            [style.animation-delay]="(0.7 + $index * 0.05) + 's'"></span>
-                        }
-                        <!-- Prix fixes aux extrémités : premier à gauche, dernier à droite -->
-                        @if ((ticker.sparkline7d?.length || 0) > 1) {
-                          @let dots = sparklineDots(ticker.sparkline7d || [], 200, 64);
-                          <span class="spark-edge-price left" [style.top]="dots[0].yPct + '%'">${{ formatPrice(dots[0].price) }}</span>
-                          <span class="spark-edge-price right" [style.top]="dots[dots.length - 1].yPct + '%'">${{ formatPrice(dots[dots.length - 1].price) }}</span>
-                        }
-                        <!-- Tooltip prix au survol -->
-                        @if (hoverIndex() >= 0 && (ticker.sparkline7d?.length || 0) > 0) {
-                          <div class="spark-tooltip"
-                            [style.left]="((hoverIndex() / ((ticker.sparkline7d?.length || 1) - 1)) * 100) + '%'">
-                            ${{ formatPrice(ticker.sparkline7d![hoverIndex()]) }}
-                          </div>
-                        }
+                        </div>
                         <div class="flex justify-between font-mono text-[9px] text-text-muted/70 mt-0.5">
                           <span>{{ sparklineRange(ticker.sparkline7d || []) }}</span>
                           <span>7D</span>
-                        </div>
                         </div>
                       </div>
                     }
