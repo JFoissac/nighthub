@@ -68,6 +68,12 @@ export class AggregatorService {
   /** Persiste le snapshot dashboard après un rebuild réussi. */
   private persistSnapshot(data: any): void {
     if (process.env.NODE_ENV === 'test') return; // jamais d'écriture disque dans les tests
+    // Ne persister que si au moins une section contient des données — un
+    // snapshot tout vide servirait un dashboard vide au prochain boot à froid.
+    const hasData = ['weather', 'market', 'streams', 'videos', 'news', 'trump'].some(
+      (k) => data?.[k] && (Array.isArray(data[k]) ? data[k].length > 0 : true),
+    );
+    if (!hasData) return;
     try {
       const dir = path.dirname(AggregatorService.SNAPSHOT_FILE);
       fs.mkdirSync(dir, { recursive: true });
