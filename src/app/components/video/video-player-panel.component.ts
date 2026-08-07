@@ -1,4 +1,4 @@
-import { Component, input, output, inject } from '@angular/core';
+import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { YoutubeVideo } from '../../models';
@@ -6,6 +6,7 @@ import { YoutubeVideo } from '../../models';
 @Component({
   selector: 'app-video-player-panel',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <!-- Backdrop -->
@@ -17,7 +18,12 @@ import { YoutubeVideo } from '../../models';
       <!-- Header -->
       <div class="flex items-center gap-3 px-4 py-3 border-b border-[#1E1E2E] bg-[#131318]/60 flex-shrink-0">
         <div class="min-w-0 flex-1">
-          <p class="font-label-caps text-[11px] text-text-primary truncate">{{ video().channelName }}</p>
+          <p class="font-label-caps text-[11px] text-text-primary truncate">
+            {{ video().channelName }}
+            @if (displayHandle()) {
+              <span class="text-primary ml-1">{{ displayHandle() }}</span>
+            }
+          </p>
           <p class="text-[12px] text-text-secondary truncate mt-0.5">{{ video().title }}</p>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
@@ -72,6 +78,11 @@ export class VideoPlayerPanelComponent {
     if (v.youtubeId) return v.youtubeId;
     const match = v.url.match(/[?&]v=([^&]+)/);
     return match?.[1] || '';
+  }
+
+  displayHandle(): string {
+    const h = this.video().channelHandle || '';
+    return h.startsWith('@') ? h : '';
   }
 
   formatViews(n: number): string {

@@ -4,10 +4,11 @@ export interface AiNewsItem {
   source: string;
   url: string;
   summary: string;
-  pubDate: string;
+  pubDate?: string;
   isNew?: boolean;
   categories?: string;
   author?: string;
+  timestamp?: Date;
 }
 
 export interface TrumpItem {
@@ -23,8 +24,33 @@ export interface TrumpItem {
   likes: number;
   retweets: number;
   isBreaking: boolean;
+  severityLevel?: 'low' | 'medium' | 'high' | 'critical';
+  severityLabel?: 'FAIBLE' | 'MOYEN' | 'IMPORTANT' | 'CRITIQUE';
   tweetDate: Date;
   timestamp?: Date;
+  mediaUrls?: string;
+  mediaType?: string;
+  isImageOnly?: boolean;
+  aiRelevance?: number;
+  aiSummary?: string;
+  aiReason?: string;
+  aiBreaking?: boolean;
+}
+
+export interface TrumpNewsItem {
+  id: string;
+  title: string;
+  source: string;
+  url: string;
+  summary: string;
+  pubDate: Date;
+  criticality: number;
+  aiRelevance?: number;
+  aiSummary?: string;
+  aiReason?: string;
+  isBreaking: boolean;
+  matchedKeywords?: string;
+  isNew?: boolean;
 }
 
 export interface WeatherDay {
@@ -39,12 +65,12 @@ export interface WeatherDay {
   precipitation: number;
   forecastDate: Date;
   dayIndex: number;
+  source?: 'live' | 'cached' | 'error';
 }
 
 export interface WeatherForecast {
   city: string;
   days: WeatherDay[];
-  // Legacy single-day compatibility
   date?: Date;
   temp?: number;
   condition?: string;
@@ -52,6 +78,8 @@ export interface WeatherForecast {
   wind?: number;
   humidity?: number;
   precipitation?: number;
+  source?: 'live' | 'cached' | 'error';
+  error?: string;
 }
 
 export interface TwitchStream {
@@ -61,6 +89,7 @@ export interface TwitchStream {
   thumbnailUrl: string;
   viewerCount: number;
   channelName: string;
+  channelHandle?: string;
   channelLogin?: string;
   channelAvatar: string;
   gameName: string;
@@ -82,6 +111,7 @@ export interface YoutubeVideo {
   title: string;
   thumbnailUrl: string;
   channelName: string;
+  channelHandle?: string;
   channelAvatar: string;
   duration: string;
   views: number;
@@ -94,7 +124,6 @@ export interface YoutubeVideo {
 
 export interface TweetItem {
   id: string;
-  twitterId?: string;
   authorName: string;
   authorHandle: string;
   authorAvatar: string;
@@ -103,4 +132,34 @@ export interface TweetItem {
   mediaUrl?: string;
   likes: number;
   retweets: number;
+}
+
+export interface MarketTicker {
+  symbol: string;
+  name: string;
+  price: number;
+  change24h: number;
+  changePercent24h: number;
+  change7d: number;
+  changePercent7d: number;
+  type: 'crypto' | 'stock';
+  marketCap?: number;
+  sparkline7d?: number[];
+  volume?: number;
+  high24h?: number;
+  low24h?: number;
+  groupKey?: string;
+  groupLabel?: string;
+}
+
+export interface UserPreferences {
+  weatherCity: string;
+  twitchFollows: string;
+  twitchUsername: string;
+  youtubeChannels: string;
+  youtubeChannelIds: string;
+  trumpMinCriticality: number;
+  customRssFeeds: string;
+  refreshInterval: number;
+  themeOledBlack: boolean;
 }

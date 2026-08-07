@@ -46,4 +46,27 @@ Thumbs.db
 .nx/polygraph
 .angular
 
-__screenshots__/
+__screenshots__
+
+# Environment files (NEVER commit real credentials)
+.env
+.env.local
+.env.production
+.env.prod
+*.env
+
+# Explicit server env files (may contain secrets)
+server/.env
+
+# SQLite databases
+*.db
+*.db-journal
+
+# Keep example/template files only
+!.env.example
+!.env.dev
+!.env.test
+!.env.prod.example
+
+# Snapshots runtime (regeneres au boot)
+server/data/dashboard-snapshot.json

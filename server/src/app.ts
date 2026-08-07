@@ -1,54 +1,172 @@
 import express from 'express';
 import cors from 'cors';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import { config } from './config/env';
 import { errorHandler } from './middleware/error.middleware';
+import { logger } from './utils/logger';
 import healthRoutes from './routes/health.routes';
 import authRoutes from './routes/auth.routes';
 import apiRoutes from './routes/api.routes';
 import { prisma } from './db/prisma.client';
-import { aggregatorService } from './services/aggregator.service';
-import { youtubeService } from './services/youtube.service';
+import { aggregatorService, trumpTrainingService, youtubeService } from './services/backend.runtime';
 
 const app = express();
 
-app.use(cors({
-  origin: ['http://localhost:4200', 'http://127.0.0.1:4200', 'http://localhost:3000'],
-  credentials: true,
-}));
-app.use(express.json());
+// Compression middleware
+app.use(compression());
 
+// CORS configuration with environment-based origins
+app.use(cors({
+  origin: config.cors.origins,
+  credentials: config.cors.credentials,
+  methods: config.cors.methods,
+  allowedHeaders: config.cors.allowedHeaders,
+}));
+
+app.use(express.json({ limit: '1mb' }));
+
+// Rate limiting - general
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+  handler: (req, res, next, options) => {
+    logger.warn('Rate limit exceeded', { ip: req.ip, path: req.path });
+    res.status(429).json(options.message);
+  },
+});
+
+// Rate limiting - strict (for expensive operations)
+const strictLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Rate limit exceeded for this operation.' },
+  handler: (req, res, next, options) => {
+    logger.warn('Strict rate limit exceeded', { ip: req.ip, path: req.path });
+    res.status(429).json(options.message);
+  },
+});
+
+// Apply general rate limiter to API routes
+app.use('/api', generalLimiter);
+
+// Health routes (no rate limiting needed)
 app.use('/health', healthRoutes);
-app.use('/api/auth', authRoutes);
+
+// Auth routes (apply strict limiter due to OAuth operations)
+app.use('/api/auth', strictLimiter, authRoutes);
+
+// API routes
 app.use('/api', apiRoutes);
 
+// Global error handler (must be last)
 app.use(errorHandler);
+
+// Graceful shutdown handler
+let isShuttingDown = false;
+const connections = new Set<import('net').Socket>();
+
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  logger.info(`Received ${signal}, starting graceful shutdown...`);
+
+  // Stop accepting new connections
+  connections.forEach((socket) => {
+    socket.destroy();
+  });
+
+  // Stop aggregator cron jobs
+  aggregatorService.stop();
+  trumpTrainingService.stop();
+
+  // Close database connection
+  await prisma.$disconnect();
+
+  logger.info('Graceful shutdown complete');
+  process.exit(0);
+}
 
 async function startServer() {
   try {
     await prisma.$connect();
-    console.log('[Database] Connected to SQLite');
+    logger.info('Database connected', { url: config.database.url });
 
-    youtubeService.cleanOrphanChannelIds().catch(console.error);
-    aggregatorService.refreshAll();
-    console.log('[Aggregator] Initial data fetch started');
+    // Listen FIRST so the server accepts connections and /health responds
+    // immediately. All heavy background work (cache pre-warm, Trump training,
+    // aggregator refresh) is scheduled AFTER the server is listening.
+    const server = app.listen(config.port, () => {
+      logger.info('Server started', {
+        port: config.port,
+        env: config.nodeEnv,
+        corsOrigins: config.cors.origins,
+      });
 
-    app.listen(config.port, () => {
-      console.log(`[Server] Running on http://localhost:${config.port}`);
-      console.log(`[Environment] ${config.nodeEnv}`);
+      // --- Background tasks (never block boot or the event loop) ---
+      // P2 : cleanOrphanChannelIds résout ~115 handles (~15s) — le différer à
+      // t+60s pour ne pas concurrencer le premier rebuild du dashboard.
+      setTimeout(() => {
+        youtubeService.cleanOrphanChannelIds().catch((e: unknown) => logger.error('Clean orphan channel IDs failed', e));
+      }, 60_000);
+
+      // Fire-and-forget cache warm-up (skips itself when the DB cache is fresh)
+      youtubeService.preWarmCache().catch((e: unknown) => logger.warn('Pre-warm failed', { error: e }));
+
+      // Trump training: loads the persisted snapshot synchronously in its
+      // constructor (fast), re-trains asynchronously in the background with
+      // periodic yields — never freezes the event loop.
+      trumpTrainingService.start();
+
+      // P0-2 : pré-warm du dashboard AVANT le refresh — le premier GET du
+      // navigateur est servi quasi instantanément (snapshot, même stale),
+      // puis le refresh rafraîchit en arrière-plan sans bloquer le rendu.
+      aggregatorService.getDashboardData().catch((e: unknown) => logger.warn('Dashboard pre-warm failed', { error: e }));
+
+      // P0-1 : gate de fraîcheur — si les données en base datent de moins de
+      // 10 min (boot après un arrêt court, cron déjà passé), on SKIP le
+      // refresh initial (13s→3min de crawl YouTube + 26-30s de fetchs réseau).
+      aggregatorService.isDataFresh().then((fresh) => {
+        if (fresh) {
+          logger.info('Data is fresh (<10min) — skipping initial refreshAll (cron will handle)');
+          return;
+        }
+        aggregatorService.refreshAll().catch((e: unknown) => logger.error('Aggregator initial data fetch failed', e));
+      }).catch((e: unknown) => {
+        logger.warn('Freshness gate failed, falling back to refreshAll', { error: (e as Error).message });
+        aggregatorService.refreshAll().catch((err: unknown) => logger.error('Aggregator initial data fetch failed', err));
+      });
+
       aggregatorService.start();
-      console.log('[Aggregator] Cron jobs started');
+      logger.info('Aggregator cron jobs started');
+      logger.info('Background tasks scheduled (clean-orphans, pre-warm, trump training, aggregator)');
     });
+
+    // Track connections for graceful shutdown
+    server.on('connection', (socket) => {
+      connections.add(socket);
+      socket.on('close', () => {
+        connections.delete(socket);
+      });
+    });
+
+    // Apply strict rate limiter to expensive endpoints
+    app.post('/api/refresh/all', strictLimiter);
+    app.post('/api/refresh/twitch', strictLimiter);
+    app.post('/api/auth/logout', strictLimiter);
+
   } catch (error) {
-    console.error('[Server] Failed to start:', error);
+    logger.error('Server failed to start', error);
     process.exit(1);
   }
 }
 
-process.on('SIGINT', async () => {
-  console.log('[Server] Shutting down...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
 startServer();
 

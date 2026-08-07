@@ -4,7 +4,7 @@ import { Observable, catchError, throwError } from 'rxjs';
 
 export interface DashboardData {
   weather: any;
-  tweets: any[];
+  market: any[];
   streams: any[];
   videos: any[];
   news: any[];
@@ -12,16 +12,9 @@ export interface DashboardData {
   refreshedAt: Date;
 }
 
-export interface TwitterAccountStat {
-  handle: string;
-  lastSeen: string | null;
-  inactive: boolean;
-}
-
 export interface AuthStatus {
   youtube: boolean;
   twitch: boolean;
-  twitter: boolean;
 }
 
 export interface UserPreferences {
@@ -30,18 +23,61 @@ export interface UserPreferences {
   twitchUsername: string;
   youtubeChannels: string;
   youtubeChannelIds: string;
-  twitterUsername: string;
-  twitterAccounts: string;
   trumpMinCriticality: number;
   customRssFeeds: string;
   refreshInterval: number;
+  themeOledBlack: boolean;
+  marketRefreshInterval: number;
+  trumpRefreshInterval: number;
+  newsRefreshInterval: number;
+  streamsRefreshInterval: number;
+  youtubeRefreshInterval: number;
+}
+
+export interface YoutubeRemapHandleDiagnostic {
+  handle: string;
+  resolvedChannelId: string | null;
+  status: 'ok' | 'unresolved' | 'missingStoredId';
+  storedMatch: boolean;
+  lastSeenChannelName: string;
+  lastSeenChannelHandle: string;
+}
+
+export interface YoutubeOrphanChannelDiagnostic {
+  channelId: string;
+  lastSeenChannelName: string;
+  lastSeenChannelHandle: string;
+}
+
+export interface YoutubeRemapReport {
+  generatedAt: string;
+  handles: YoutubeRemapHandleDiagnostic[];
+  orphanChannelIds: YoutubeOrphanChannelDiagnostic[];
+  storedChannelIds: string[];
+  resolvedChannelIds: string[];
+}
+
+export interface YoutubeChannelCandidate {
+  channelId: string;
+  title: string;
+  handle: string;
+  url: string;
+  source: 'youtube-api' | 'cache';
+}
+
+export interface ExtractedNewsArticle {
+  title: string;
+  source: string;
+  content: string;
+  contentHtml?: string;
+  url: string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   constructor(private http: HttpClient) {}
 
-  private baseUrl = 'http://localhost:3000/api';
+  private baseUrl = 'http://localhost:3001/api';
   isLoading = false;
   error: string | null = null;
 
@@ -57,7 +93,7 @@ export class ApiService {
   };
 
   getHealth(): Observable<any> {
-    return this.http.get('http://localhost:3000/health').pipe(
+    return this.http.get('http://localhost:3001/health').pipe(
       catchError(this.handleError)
     );
   }
@@ -73,13 +109,40 @@ export class ApiService {
   getDashboardStream(onProgress: (step: string) => void): Observable<DashboardData> {
     return new Observable(subscriber => {
       const es = new EventSource(`${this.baseUrl}/dashboard/stream`);
+      // Server heartbeat is 4s and the timeout is re-armed on every
+      // heartbeat/progress event, so 30s only fires when the stream is
+      // genuinely stuck (e.g. server still booting). Was 5s, which failed
+      // whenever the first dashboard event took longer than that.
+      const SSE_TIMEOUT_MS = 30000;
+      let done = false;
+      let timeoutId: any;
+
+      const armTimeout = () => {
+        if (timeoutId) clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          if (done) return;
+          done = true;
+          es.close();
+          subscriber.error(new Error('SSE timeout'));
+        }, SSE_TIMEOUT_MS);
+      };
+
+      armTimeout();
 
       es.addEventListener('progress', (event: MessageEvent) => {
         const data = JSON.parse(event.data);
         onProgress(data.step);
+        armTimeout();
+      });
+
+      es.addEventListener('heartbeat', () => {
+        armTimeout();
       });
 
       es.addEventListener('dashboard', (event: MessageEvent) => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
         const data = JSON.parse(event.data);
         subscriber.next(data);
         subscriber.complete();
@@ -87,18 +150,19 @@ export class ApiService {
       });
 
       es.addEventListener('error', () => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
         es.close();
         subscriber.error(new Error('SSE connection failed'));
       });
 
-      return () => es.close();
+      return () => {
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        es.close();
+      };
     });
-  }
-
-  getTweets(limit: number = 20): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/tweets?limit=${limit}`).pipe(
-      catchError(this.handleError)
-    );
   }
 
   getTrumpTweets(limit: number = 20): Observable<any[]> {
@@ -132,6 +196,30 @@ export class ApiService {
     );
   }
 
+  getMarketData(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.baseUrl}/market/live`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  getMarketSentiment(): Observable<any> {
+    return this.http.get<any>(`${this.baseUrl}/market/sentiment`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  getMarketNews(): Observable<any[]> {
+    return this.http.get<any[]>(`${this.baseUrl}/market/news`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  extractNewsArticle(url: string): Observable<ExtractedNewsArticle> {
+    return this.http.post<ExtractedNewsArticle>(`${this.baseUrl}/news/extract`, { url }).pipe(
+      catchError(this.handleError)
+    );
+  }
+
   getWeather(city: string = 'Caen'): Observable<any> {
     return this.http.get<any>(`${this.baseUrl}/weather?city=${encodeURIComponent(city)}`).pipe(
       catchError(this.handleError)
@@ -145,7 +233,7 @@ export class ApiService {
   }
 
   getAuthStatus(): Observable<AuthStatus> {
-    return this.http.get<AuthStatus>('http://localhost:3000/api/auth/status').pipe(
+    return this.http.get<AuthStatus>('http://localhost:3001/api/auth/status').pipe(
       catchError(this.handleError)
     );
   }
@@ -156,7 +244,7 @@ export class ApiService {
     const left = (window.innerWidth - width) / 2;
     const top = (window.innerHeight - height) / 2;
     window.open(
-      'http://localhost:3000/api/auth/youtube',
+      'http://localhost:3001/api/auth/youtube',
       'YouTube OAuth',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
     );
@@ -168,26 +256,14 @@ export class ApiService {
     const left = (window.innerWidth - width) / 2;
     const top = (window.innerHeight - height) / 2;
     window.open(
-      'http://localhost:3000/api/auth/twitch',
+      'http://localhost:3001/api/auth/twitch',
       'Twitch OAuth',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
     );
   }
 
-  connectTwitter(): void {
-    const width = 600;
-    const height = 700;
-    const left = (window.innerWidth - width) / 2;
-    const top = (window.innerHeight - height) / 2;
-    window.open(
-      'http://localhost:3000/api/auth/twitter',
-      'Twitter OAuth',
-      `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
-    );
-  }
-
-  logout(provider: 'youtube' | 'twitch' | 'twitter'): Observable<any> {
-    return this.http.post('http://localhost:3000/api/auth/logout', { provider }).pipe(
+  logout(provider: 'youtube' | 'twitch'): Observable<any> {
+    return this.http.post('http://localhost:3001/api/auth/logout', { provider }).pipe(
       catchError(this.handleError)
     );
   }
@@ -210,16 +286,16 @@ export class ApiService {
     ).pipe(catchError(this.handleError));
   }
 
+  getTwitchPlayback(channel: string): Observable<{ auth?: string; sig?: string; expiresAt?: string; anonymous: boolean }> {
+    return this.http.get<{ auth?: string; sig?: string; expiresAt?: string; anonymous: boolean }>(
+      `${this.baseUrl}/twitch/playback?channel=${encodeURIComponent(channel)}`
+    ).pipe(catchError(this.handleError));
+  }
+
   importYoutubeList(channels: string[]): Observable<{ imported: number; channels: string[] }> {
     return this.http.post<{ imported: number; channels: string[] }>(
       `${this.baseUrl}/youtube/import-list`, { channels }
     ).pipe(catchError(this.handleError));
-  }
-
-  getTwitterAccountStats(): Observable<TwitterAccountStat[]> {
-    return this.http.get<TwitterAccountStat[]>(`${this.baseUrl}/twitter/account-stats`).pipe(
-      catchError(this.handleError)
-    );
   }
 
   detectFeed(url: string): Observable<{ feedUrl: string }> {
@@ -237,6 +313,24 @@ export class ApiService {
   importYoutubeTakeout(channels: { channelId: string; title: string }[]): Observable<{ imported: number; total: number }> {
     return this.http.post<{ imported: number; total: number }>(
       `${this.baseUrl}/youtube/import-takeout`, { channels }
+    ).pipe(catchError(this.handleError));
+  }
+
+  getYoutubeRemapReport(): Observable<YoutubeRemapReport> {
+    return this.http.get<YoutubeRemapReport>(`${this.baseUrl}/youtube/remap/report`).pipe(
+      catchError(this.handleError)
+    );
+  }
+
+  searchYoutubeChannels(query: string): Observable<{ query: string; candidates: YoutubeChannelCandidate[] }> {
+    return this.http.get<{ query: string; candidates: YoutubeChannelCandidate[] }>(
+      `${this.baseUrl}/youtube/remap/search?q=${encodeURIComponent(query)}`
+    ).pipe(catchError(this.handleError));
+  }
+
+  remapYoutubeChannel(handle: string, channelId: string): Observable<{ success: boolean; handle: string; channelId: string }> {
+    return this.http.post<{ success: boolean; handle: string; channelId: string }>(
+      `${this.baseUrl}/youtube/remap`, { handle, channelId }
     ).pipe(catchError(this.handleError));
   }
 }

@@ -1,11 +1,13 @@
-import { Component, input, output, inject, signal } from '@angular/core';
+import { Component, input, output, inject, signal, effect, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { TwitchStream } from '../../models';
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-stream-player-panel',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     <div class="relative h-[calc(100vh-3rem)] flex" #wrapper>
@@ -38,14 +40,20 @@ import { TwitchStream } from '../../models';
           <div class="min-w-0 flex-1">
             <p class="font-label-caps text-[11px] text-text-primary truncate">{{ stream().channelName }}</p>
             <div class="flex items-center gap-1.5 mt-0.5">
-              <span class="status-pulse status-pulse-red"></span>
-              <span class="font-label-caps text-[9px] text-text-muted">LIVE</span>
+              <span class="status-pulse" [class.status-pulse-red]="stream().isLive"></span>
+              <span class="font-label-caps text-[9px] text-text-muted">{{ stream().isLive ? 'LIVE' : 'OFFLINE' }}</span>
               @if (stream().gameName) {
                 <span class="font-label-caps text-[9px] text-text-muted">· {{ stream().gameName }}</span>
               }
             </div>
           </div>
           <div class="flex items-center gap-2 flex-shrink-0">
+            @if (isTurboPlayback()) {
+              <span
+                class="font-label-caps text-[9px] px-2 py-1 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                title="Lecture authentifiée — Twitch Turbo : pas de publicité"
+              >TURBO</span>
+            }
             <!-- Width badge -->
             <span class="font-label-caps text-[9px] text-text-muted opacity-50 select-none">{{ panelWidth() }}px</span>
             <!-- Open in new tab -->
@@ -79,7 +87,11 @@ import { TwitchStream } from '../../models';
         <!-- Stream title + stats -->
         <div class="px-4 py-2 border-b border-[#1E1E2E]/50 bg-[#131318]/40 flex-shrink-0">
           <p class="text-[13px] text-text-secondary line-clamp-1">{{ stream().title }}</p>
-          <span class="font-label-caps text-[9px] text-text-muted">{{ stream().viewerCount | number }} VIEWERS</span>
+          @if (stream().isLive) {
+            <span class="font-label-caps text-[9px] text-text-muted">{{ stream().viewerCount | number }} VIEWERS</span>
+          } @else {
+            <span class="font-label-caps text-[9px] text-text-muted">OFFLINE</span>
+          }
         </div>
 
         <!-- Twitch Player -->
@@ -101,12 +113,45 @@ export class StreamPlayerPanelComponent {
   close = output<void>();
 
   private sanitizer = inject(DomSanitizer);
+  private apiService = inject(ApiService);
+  private destroyRef = inject(DestroyRef);
 
   panelWidth = signal(420);
   isResizing = signal(false);
+  private cachedPlayerKey: string | null = null;
+  private cachedPlayerUrl: SafeResourceUrl | null = null;
+  private playbackAuth = signal<{ auth?: string; sig?: string } | null>(null);
+  isTurboPlayback = signal(false);
 
   private minWidth = 280;
   private maxWidth = 900;
+
+  constructor() {
+    // Fetch a viewer-authenticated playback token whenever the stream changes.
+    // With a linked Twitch account (Turbo/Prime), the embed gets an auth token
+    // and Twitch serves the stream without preroll ads.
+    effect(() => {
+      const s = this.stream();
+      const login = (s.channelLogin || s.channelName || '').toLowerCase();
+      this.playbackAuth.set(null);
+      this.isTurboPlayback.set(false);
+      if (!login || !s.isLive) return;
+
+      const sub = this.apiService.getTwitchPlayback(login).subscribe({
+        next: (res) => {
+          if (res && !res.anonymous && res.auth) {
+            this.playbackAuth.set({ auth: res.auth, sig: res.sig });
+            this.isTurboPlayback.set(true);
+          }
+        },
+        error: () => {
+          this.playbackAuth.set(null);
+          this.isTurboPlayback.set(false);
+        },
+      });
+      this.destroyRef.onDestroy(() => sub.unsubscribe());
+    });
+  }
 
   startResize(event: MouseEvent) {
     event.preventDefault();
@@ -150,7 +195,22 @@ export class StreamPlayerPanelComponent {
     const s = this.stream();
     const login = s.channelLogin || s.channelName.toLowerCase();
     const parent = window.location.hostname;
-    const url = `https://player.twitch.tv/?channel=${encodeURIComponent(login)}&parent=${parent}&autoplay=true&muted=false`;
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    const auth = this.playbackAuth();
+    const key = `${login}|${parent}|${auth?.auth ? 'auth' : 'anon'}`;
+    if (this.cachedPlayerUrl && this.cachedPlayerKey === key) {
+      return this.cachedPlayerUrl;
+    }
+    let url = `https://player.twitch.tv/?channel=${encodeURIComponent(login)}&parent=${parent}&autoplay=true&muted=false`;
+    if (auth?.auth) {
+      // Viewer-authenticated playback: Turbo/Prime subscribers get ad-free
+      // streams from the embed (auth + sig come from the backend's Helix call).
+      url += `&auth=${encodeURIComponent(auth.auth)}`;
+      if (auth.sig) {
+        url += `&sig=${encodeURIComponent(auth.sig)}`;
+      }
+    }
+    this.cachedPlayerKey = key;
+    this.cachedPlayerUrl = this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    return this.cachedPlayerUrl;
   }
 }

@@ -1,15 +1,19 @@
-import { Component, input, output, signal, effect } from '@angular/core';
+import { Component, input, output, signal, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { YoutubeVideo } from '../../models';
 
 @Component({
   selector: 'app-video-card',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     @if (video()) {
-      <div class="flex gap-3 group border-b border-[#1E1E2E]/50 pb-3 last:border-0 last:pb-0 cursor-pointer"
-           (click)="select.emit(video()!)">
+      <div class="flex gap-3 group border-b border-[#1E1E2E]/50 pb-3 last:border-0 last:pb-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
+           role="button" tabindex="0"
+           (click)="select.emit(video()!)"
+           (keydown.enter)="select.emit(video()!)"
+           (keydown.space)="select.emit(video()!); $event.preventDefault()">
         <!-- Thumbnail -->
         <div class="relative w-32 h-[72px] bg-[#1E1E2E] rounded overflow-hidden flex-shrink-0 border border-[#1E1E2E] group-hover:border-primary transition-colors">
           <img [src]="video()!.thumbnailUrl" [alt]="video()!.title"
@@ -19,10 +23,10 @@ import { YoutubeVideo } from '../../models';
             <svg class="w-8 h-8 text-white drop-shadow" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           </div>
           @if (video()!.isNew) {
-            <div class="absolute top-1 left-1 px-1 py-0.5 bg-primary text-[#0A0A0F] font-label-caps text-[7px] rounded">NEW</div>
+            <div class="absolute top-1 left-1 px-1 py-0.5 bg-primary text-[#0A0A0F] font-label-caps text-[10px] rounded">NEW</div>
           }
           @if (video()!.duration) {
-            <div class="absolute bottom-1 right-1 px-1 py-0.5 bg-black/80 font-mono text-[8px] text-white rounded leading-none">{{ video()!.duration }}</div>
+            <div class="absolute bottom-1 right-1 px-1 py-0.5 bg-black/80 font-mono text-[10px] text-white rounded leading-none">{{ video()!.duration }}</div>
           }
         </div>
 
@@ -32,11 +36,11 @@ import { YoutubeVideo } from '../../models';
             {{ video()!.title }}
           </h4>
           <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5">
-            <span class="font-label-caps text-[9px] text-secondary">{{ video()!.channelName }}</span>
+            <span class="font-label-caps text-[10px] text-secondary">{{ video()!.channelName }}</span>
             @if (video()!.views) {
-              <span class="font-label-caps text-[9px] text-text-muted">{{ formatViews(video()!.views) }}</span>
+              <span class="font-label-caps text-[10px] text-text-muted">{{ formatViews(video()!.views) }}</span>
             }
-            <span class="font-label-caps text-[9px] text-text-muted">{{ cachedDate() }}</span>
+            <span class="font-label-caps text-[10px] text-text-muted">{{ cachedDate() }}</span>
           </div>
         </div>
       </div>

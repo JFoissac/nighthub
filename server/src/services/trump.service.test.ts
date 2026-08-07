@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 // Mock Prisma before importing service
 vi.mock('../db/prisma.client', () => ({
@@ -6,6 +9,7 @@ vi.mock('../db/prisma.client', () => ({
     trumpTweet: {
       upsert: vi.fn().mockResolvedValue({}),
       findMany: vi.fn().mockResolvedValue([]),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   },
 }));
@@ -21,9 +25,20 @@ import { TrumpService } from './trump.service';
 
 describe('TrumpService', () => {
   let service: TrumpService;
+  let tempDir: string | null = null;
 
   beforeEach(() => {
+    process.env.TRUMP_DISABLE_ARCHIVE_FALLBACK = 'true';
     service = new TrumpService();
+  });
+
+  afterEach(() => {
+    if (tempDir) {
+      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = null;
+    }
+    delete process.env.TRUMP_DISABLE_ARCHIVE_FALLBACK;
+    delete process.env.TRUMP_ARCHIVE_DATASET_PATH;
   });
 
   describe('analyzeItem — criticality scoring', () => {
@@ -125,6 +140,23 @@ describe('TrumpService', () => {
     });
   });
 
+  describe('truth social payload enrichment', () => {
+    it('captures media urls and flags image-only posts', () => {
+      const result = (service as any).analyzeTruthSocialPost({
+        id: '123',
+        content: '',
+        media_attachments: [
+          { type: 'image', url: 'https://cdn.example.com/a.jpg', preview_url: 'https://cdn.example.com/p.jpg' },
+        ],
+      });
+
+      expect(result.mediaType).toBe('image');
+      expect(result.mediaUrls).toContain('https://cdn.example.com/a.jpg');
+      expect(result.isImageOnly).toBe(true);
+      expect(result.criticality).toBe(0);
+    });
+  });
+
   describe('URL transformation', () => {
     it('converts nitter URLs to x.com URLs', () => {
       const result = service.analyzeTweet({
@@ -134,6 +166,104 @@ describe('TrumpService', () => {
         guid: 'https://nitter.net/realDonaldTrump/status/123456789',
       });
       expect(result.url).toContain('x.com');
+    });
+  });
+
+  describe('enrichWithAi', () => {
+    const savedEnv = { ...process.env };
+
+    beforeEach(() => {
+      process.env = { ...savedEnv };
+      delete process.env.TRUMP_AI_API_KEY;
+      delete process.env.OPENAI_API_KEY;
+    });
+
+    afterEach(() => {
+      process.env = savedEnv;
+      vi.unstubAllGlobals();
+    });
+
+    it('returns posts unchanged when no API key is configured', async () => {
+      const posts = [{ tweetId: '1', content: 'hello' }];
+      const out = await (service as any).enrichWithAi(posts);
+      expect(out).toBe(posts);
+      expect(out[0].aiRelevance).toBeUndefined();
+    });
+
+    it('merges AI analysis into posts when a key is configured', async () => {
+      process.env.TRUMP_AI_API_KEY = 'sk-test';
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify([
+            { index: 0, relevance: 9, summary: 'Frappe annoncée', reason: 'Majeur', breaking: true },
+          ]) } }],
+        }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const posts = [{ tweetId: '1', content: 'We launched strikes', criticality: 7 }];
+      const out = await (service as any).enrichWithAi(posts);
+      expect(out[0].aiRelevance).toBe(9);
+      expect(out[0].aiSummary).toBe('Frappe annoncée');
+      expect(out[0].criticality).toBe(7); // la criticité existante est conservée
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe('sortByRelevance', () => {
+    it('sorts by criticality when AI is disabled', () => {
+      const out = (service as any).sortByRelevance([
+        { tweetId: 'a', criticality: 3 },
+        { tweetId: 'b', criticality: 9 },
+      ]);
+      expect(out.map((t: any) => t.tweetId)).toEqual(['b', 'a']);
+    });
+
+    it('puts AI breaking first, then AI relevance, then criticality', () => {
+      process.env.TRUMP_AI_API_KEY = 'sk-test';
+      const out = (service as any).sortByRelevance([
+        { tweetId: 'a', criticality: 9, aiRelevance: 3 },
+        { tweetId: 'b', criticality: 2, aiRelevance: 8, aiBreaking: true },
+        { tweetId: 'c', criticality: 7, aiRelevance: 6 },
+      ]);
+      expect(out.map((t: any) => t.tweetId)).toEqual(['b', 'c', 'a']);
+      delete process.env.TRUMP_AI_API_KEY;
+    });
+  });
+
+  describe('getCachedTrumpTweets with AI active', () => {
+    afterEach(() => {
+      delete process.env.TRUMP_AI_API_KEY;
+    });
+
+    it('filters low-relevance posts and ranks by AI relevance', async () => {
+      process.env.TRUMP_AI_API_KEY = 'sk-test';
+      process.env.TRUMP_AI_MIN_RELEVANCE = '2';
+      const { prisma } = await import('../db/prisma.client');
+      const fakeTweets = [
+        { id: '1', tweetId: 'a', content: 'Merci pour le soutien !', criticality: 2, sentiment: 'positive', type: 'tweet', isBreaking: false, aiRelevance: 1 },
+        { id: '2', tweetId: 'b', content: 'Nouvelle frappe militaire', criticality: 8, sentiment: 'neutral', type: 'tweet', isBreaking: true, aiRelevance: 9 },
+        { id: '3', tweetId: 'c', content: 'Résultat du procès', criticality: 6, sentiment: 'neutral', type: 'scandal', isBreaking: false, aiRelevance: 5 },
+      ];
+      (prisma.trumpTweet.findMany as any).mockResolvedValueOnce(fakeTweets);
+
+      const result = await service.getCachedTrumpTweets(10);
+      expect(result.map((t: any) => t.tweetId)).toEqual(['b', 'c']); // 'a' filtré (relevance 1 < min 2)
+      delete process.env.TRUMP_AI_MIN_RELEVANCE;
+    });
+
+    it('keeps chronological order when no tweet has AI scores yet', async () => {
+      process.env.TRUMP_AI_API_KEY = 'sk-test';
+      const { prisma } = await import('../db/prisma.client');
+      const fakeTweets = [
+        { id: '1', tweetId: 'a', content: 'Old', criticality: 2, sentiment: 'neutral', type: 'tweet', isBreaking: false, aiRelevance: 0 },
+        { id: '2', tweetId: 'b', content: 'New', criticality: 8, sentiment: 'neutral', type: 'tweet', isBreaking: true, aiRelevance: 0 },
+      ];
+      (prisma.trumpTweet.findMany as any).mockResolvedValueOnce(fakeTweets);
+
+      const result = await service.getCachedTrumpTweets(10);
+      expect(result).toHaveLength(2); // aucun filtre appliqué
     });
   });
 
@@ -154,6 +284,30 @@ describe('TrumpService', () => {
       const result = await service.getCachedTrumpTweets(10);
       expect(result).toHaveLength(1);
       expect(result[0].tweetId).toBe('abc');
+    });
+
+    it('falls back to the local archive when cache is empty', async () => {
+      tempDir = mkdtempSync(join(tmpdir(), 'trump-fallback-'));
+      const archivePath = join(tempDir, 'tweets.csv');
+      writeFileSync(
+        archivePath,
+        [
+          'date,text,platform,favorite_count,repost_count',
+          '"2025-12-31 21:54:21+00:00","Congratulations to everyone, great rally tonight, thank you!",Truth Social,10,2',
+          '"2025-12-31 20:55:30+00:00","We launch bomb on Iran and respond immediately with missiles.",Truth Social,1000,500',
+        ].join('\n'),
+      );
+      delete process.env.TRUMP_DISABLE_ARCHIVE_FALLBACK;
+      process.env.TRUMP_ARCHIVE_DATASET_PATH = archivePath;
+
+      const { prisma } = await import('../db/prisma.client');
+      (prisma.trumpTweet.findMany as any).mockResolvedValueOnce([]);
+
+      const result = await service.getCachedTrumpTweets(2);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].source).toBe('local-archive');
+      expect(result[1].criticality).toBeGreaterThanOrEqual(8);
     });
   });
 });

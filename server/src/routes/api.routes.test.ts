@@ -23,76 +23,100 @@ vi.mock('../db/prisma.client', () => ({
   },
 }));
 
-vi.mock('../services/weather.service', () => ({
+vi.mock('../services/backend.runtime', () => ({
   weatherService: {
     getWeeklyForecast: vi.fn(),
   },
-}));
-
-vi.mock('../services/news.service', () => ({
   newsService: {
     fetchAiNews: vi.fn(),
     getCachedNews: vi.fn(),
     detectFeed: vi.fn(),
     validateFeedUrl: vi.fn(),
+    extractArticleText: vi.fn(),
   },
-}));
-
-vi.mock('../services/twitter.service', () => ({
-  twitterService: {
-    getTimeline: vi.fn(),
-    getTwitterAccounts: vi.fn(),
-  },
-}));
-
-vi.mock('../services/youtube.service', () => ({
   youtubeService: {
     getLatestVideos: vi.fn(),
     getChannelHandles: vi.fn().mockResolvedValue([]),
     getChannelIds: vi.fn().mockResolvedValue([]),
     saveChannelHandles: vi.fn(),
     saveChannelIds: vi.fn(),
+    getRemapReport: vi.fn().mockResolvedValue({
+      generatedAt: new Date().toISOString(),
+      handles: [],
+      orphanChannelIds: [],
+      storedChannelIds: [],
+      resolvedChannelIds: [],
+    }),
+    searchChannelsByName: vi.fn().mockResolvedValue([]),
+    remapHandleToChannelId: vi.fn().mockResolvedValue({
+      handle: '@demo',
+      channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb',
+    }),
   },
-}));
-
-vi.mock('../services/twitch.service', () => ({
   twitchService: {
     getFollowedStreams: vi.fn(),
     getFollows: vi.fn(),
     getFollowsByProfile: vi.fn(),
     importFollowsFromList: vi.fn(),
+    refreshLiveCacheLight: vi.fn(),
+    getLiveStreamsFast: vi.fn(),
+    getAuthUrl: vi.fn(),
+    exchangeCodeForTokens: vi.fn(),
+    isConnected: vi.fn(),
+    disconnect: vi.fn(),
   },
-}));
-
-vi.mock('../services/trump.service', () => ({
   trumpService: {
     fetchTrumpTweets: vi.fn(),
     getCachedTrumpTweets: vi.fn(),
   },
-}));
-
-vi.mock('../services/aggregator.service', () => ({
+  trumpNewsService: {
+    fetchTrumpNews: vi.fn(),
+    getCachedTrumpNews: vi.fn(),
+  },
+  marketService: {
+    getLiveMarketData: vi.fn(),
+  },
   aggregatorService: {
     getDashboardData: vi.fn(),
+    getDashboardSnapshot: vi.fn().mockReturnValue(null),
+    invalidateDashboardCache: vi.fn(),
     refreshAll: vi.fn(),
     refreshTwitch: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
   },
 }));
 
 import router from './api.routes';
-import { weatherService } from '../services/weather.service';
-import { newsService } from '../services/news.service';
-import { twitterService } from '../services/twitter.service';
-import { youtubeService } from '../services/youtube.service';
-import { twitchService } from '../services/twitch.service';
-import { trumpService } from '../services/trump.service';
-import { aggregatorService } from '../services/aggregator.service';
+import { weatherService, newsService, youtubeService, twitchService, trumpService, trumpNewsService, aggregatorService } from '../services/backend.runtime';
 import { prisma } from '../db/prisma.client';
 
+function getMountedPrefix(layer: any): string {
+  const pattern = String(layer.regexp || '');
+  if (pattern.includes('\\/youtube')) return '/youtube';
+  if (pattern.includes('\\/twitch')) return '/twitch';
+  if (pattern.includes('\\/market')) return '/market';
+  return '';
+}
+
+function findRouteLayer(stack: any[], path: string, method: string, prefix = ''): any | null {
+  for (const layer of stack) {
+    if (layer.route) {
+      const fullPath = `${prefix}${layer.route.path}`;
+      if (fullPath === path && layer.route.methods[method]) {
+        return layer;
+      }
+    }
+    if (layer.handle?.stack) {
+      const nested = findRouteLayer(layer.handle.stack, path, method, `${prefix}${getMountedPrefix(layer)}`);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
 function getHandler(path: string, method: string) {
-  const layer = (router as any).stack.find(
-    (l: any) => l.route && l.route.path === path && l.route.methods[method]
-  );
+  const layer = findRouteLayer((router as any).stack, path, method);
   if (!layer) throw new Error(`Route ${method.toUpperCase()} ${path} not found`);
   const stack = layer.route.stack.map((s: any) => s.handle);
   return async (req: any, res: any) => {
@@ -145,18 +169,18 @@ describe('API Routes', () => {
       const handler = getHandler('/weather', 'get');
       const res = mockRes();
       const req = { query: { city: 'Paris' } } as any;
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Paris' });
+      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Paris', source: 'live' });
 
       await handler(req, res);
       expect(weatherService.getWeeklyForecast).toHaveBeenCalledWith('Paris');
-      expect(res.json).toHaveBeenCalledWith({ city: 'Paris' });
+      expect(res.json).toHaveBeenCalledWith({ city: 'Paris', source: 'live' });
     });
 
     it('falls back to Caen for invalid city', async () => {
       const handler = getHandler('/weather', 'get');
       const res = mockRes();
       const req = { query: { city: '123!!!' } } as any;
-      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Caen' });
+      (weatherService.getWeeklyForecast as any).mockResolvedValue({ city: 'Caen', source: 'live' });
 
       await handler(req, res);
       expect(weatherService.getWeeklyForecast).toHaveBeenCalledWith('Caen');
@@ -171,6 +195,26 @@ describe('API Routes', () => {
       await handler(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ error: 'Failed to fetch weather' });
+    });
+
+    it('should return 503 with error object when service returns source: "error"', async () => {
+      const handler = getHandler('/weather', 'get');
+      const res = mockRes();
+      const req = { query: {} } as any;
+      (weatherService.getWeeklyForecast as any).mockResolvedValue({
+        city: 'Caen',
+        error: 'Open-Meteo service unavailable. Please try again later.',
+        source: 'error',
+      });
+
+      await handler(req, res);
+      // The endpoint should return 503 Service Unavailable when the service signals an error
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({
+        city: 'Caen',
+        error: 'Open-Meteo service unavailable. Please try again later.',
+        source: 'error',
+      });
     });
   });
 
@@ -197,19 +241,6 @@ describe('API Routes', () => {
     });
   });
 
-  describe('GET /tweets', () => {
-    it('returns tweets with limit', async () => {
-      const handler = getHandler('/tweets', 'get');
-      const res = mockRes();
-      const req = { query: { limit: '5' } } as any;
-      (twitterService.getTimeline as any).mockResolvedValue([{ id: 't1' }]);
-
-      await handler(req, res);
-      expect(twitterService.getTimeline).toHaveBeenCalledWith(5);
-      expect(res.json).toHaveBeenCalledWith([{ id: 't1' }]);
-    });
-  });
-
   describe('GET /trump', () => {
     it('returns trump tweets with limit', async () => {
       const handler = getHandler('/trump', 'get');
@@ -220,6 +251,30 @@ describe('API Routes', () => {
       await handler(req, res);
       expect(trumpService.getCachedTrumpTweets).toHaveBeenCalledWith(15);
       expect(res.json).toHaveBeenCalledWith([{ content: 'T' }]);
+    });
+  });
+
+  describe('GET /trump/news', () => {
+    it('returns cached trump news with limit', async () => {
+      const handler = getHandler('/trump/news', 'get');
+      const res = mockRes();
+      const req = { query: { limit: '8' } } as any;
+      (trumpNewsService.getCachedTrumpNews as any).mockResolvedValue([{ title: 'N1', isBreaking: true }]);
+
+      await handler(req, res);
+      expect(trumpNewsService.getCachedTrumpNews).toHaveBeenCalledWith(8);
+      expect(res.json).toHaveBeenCalledWith([{ title: 'N1', isBreaking: true }]);
+    });
+
+    it('returns 500 on error', async () => {
+      const handler = getHandler('/trump/news', 'get');
+      const res = mockRes();
+      const req = { query: {} } as any;
+      (trumpNewsService.getCachedTrumpNews as any).mockRejectedValue(new Error('fail'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Failed to fetch Trump news' });
     });
   });
 
@@ -313,12 +368,69 @@ describe('API Routes', () => {
     });
   });
 
+  describe('GET /youtube/remap/report', () => {
+    it('returns remap diagnostic report', async () => {
+      const handler = getHandler('/youtube/remap/report', 'get');
+      const res = mockRes();
+      const req = {} as any;
+      const report = {
+        generatedAt: new Date().toISOString(),
+        handles: [{ handle: '@foo', resolvedChannelId: null, status: 'unresolved' }],
+        orphanChannelIds: [],
+        storedChannelIds: [],
+        resolvedChannelIds: [],
+      };
+      (youtubeService.getRemapReport as any).mockResolvedValue(report);
+
+      await handler(req, res);
+      expect(youtubeService.getRemapReport).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(report);
+    });
+  });
+
+  describe('GET /youtube/remap/search', () => {
+    it('searches channel candidates from query', async () => {
+      const handler = getHandler('/youtube/remap/search', 'get');
+      const res = mockRes();
+      const req = { query: { q: 'sylvain' } } as any;
+      (youtubeService.searchChannelsByName as any).mockResolvedValue([
+        { channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb', title: 'Sylvain', handle: '@Sylvain', url: 'https://youtube.com/@Sylvain', source: 'youtube-api' },
+      ]);
+
+      await handler(req, res);
+      expect(youtubeService.searchChannelsByName).toHaveBeenCalledWith('sylvain');
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ query: 'sylvain' }));
+    });
+
+    it('returns 400 for too-short query', async () => {
+      const handler = getHandler('/youtube/remap/search', 'get');
+      const res = mockRes();
+      const req = { query: { q: 'a' } } as any;
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(youtubeService.searchChannelsByName).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST /youtube/remap', () => {
+    it('remaps handle to provided channel ID', async () => {
+      const handler = getHandler('/youtube/remap', 'post');
+      const res = mockRes();
+      const req = { body: { handle: '@foo', channelId: 'UCbbbbbbbbbbbbbbbbbbbbbb' } } as any;
+
+      await handler(req, res);
+      expect(youtubeService.remapHandleToChannelId).toHaveBeenCalledWith('@foo', 'UCbbbbbbbbbbbbbbbbbbbbbb');
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    });
+  });
+
   describe('GET /dashboard', () => {
     it('returns dashboard data', async () => {
       const handler = getHandler('/dashboard', 'get');
       const res = mockRes();
       const req = {} as any;
-      const data = { weather: null, tweets: [], streams: [], videos: [], news: [], trump: [], refreshedAt: new Date() };
+      const data = { weather: null, streams: [], videos: [], news: [], trump: [], refreshedAt: new Date() };
       (aggregatorService.getDashboardData as any).mockResolvedValue(data);
 
       await handler(req, res);
@@ -338,6 +450,30 @@ describe('API Routes', () => {
   });
 
   describe('GET /dashboard/stream', () => {
+    it('emits heartbeat events while dashboard payload is pending', async () => {
+      vi.useFakeTimers();
+      try {
+        const handler = getHandler('/dashboard/stream', 'get');
+        const res = mockRes();
+        const req = {} as any;
+
+        (aggregatorService.getDashboardData as any).mockImplementation(
+          () => new Promise((resolve) => setTimeout(() => resolve({ weather: null }), 4500))
+        );
+
+        const pending = handler(req, res);
+        await vi.advanceTimersByTimeAsync(4100);
+
+        expect(res.write).toHaveBeenCalledWith('event: heartbeat\n');
+        expect(res.write).toHaveBeenCalledWith(expect.stringContaining('"ts"'));
+
+        await vi.advanceTimersByTimeAsync(1000);
+        await pending;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('streams progress events and final dashboard', async () => {
       const handler = getHandler('/dashboard/stream', 'get');
       const res = mockRes();
@@ -420,6 +556,19 @@ describe('API Routes', () => {
     });
   });
 
+  describe('POST /refresh/trump-news', () => {
+    it('refreshes trump news and returns count', async () => {
+      const handler = getHandler('/refresh/trump-news', 'post');
+      const res = mockRes();
+      const req = {} as any;
+      (trumpNewsService.fetchTrumpNews as any).mockResolvedValue([{ title: 'N1' }, { title: 'N2' }]);
+
+      await handler(req, res);
+      expect(trumpNewsService.fetchTrumpNews).toHaveBeenCalledWith(20);
+      expect(res.json).toHaveBeenCalledWith({ success: true, count: 2 });
+    });
+  });
+
   describe('POST /sites/detect-feed', () => {
     it('returns 404 when no feed found', async () => {
       const handler = getHandler('/sites/detect-feed', 'post');
@@ -443,22 +592,90 @@ describe('API Routes', () => {
     });
   });
 
-  describe('GET /twitter/account-stats', () => {
-    it('returns stats for accounts', async () => {
-      const handler = getHandler('/twitter/account-stats', 'get');
+  describe('POST /news/extract', () => {
+    it('returns extracted article payload with title/source/content/url', async () => {
+      const handler = getHandler('/news/extract', 'post');
       const res = mockRes();
-      const req = {} as any;
-      (twitterService.getTwitterAccounts as any).mockResolvedValue(['elonmusk', 'jack']);
-      (prisma.$queryRaw as any).mockResolvedValue([
-        { authorHandle: '@elonmusk', lastSeen: new Date().toISOString() },
-      ]);
+      const req = { body: { url: 'https://example.com/news/ai' } } as any;
+      const payload = {
+        title: 'AI Article',
+        source: 'example.com',
+        content: 'Paragraph 1.\n\nParagraph 2.',
+        url: 'https://example.com/news/ai',
+      };
+      (newsService.extractArticleText as any).mockResolvedValue(payload);
 
       await handler(req, res);
-      const result = res.json.mock.calls[0][0];
-      expect(result).toHaveLength(2);
-      expect(result[0].handle).toBe('elonmusk');
-      expect(result[0].inactive).toBe(false);
-      expect(result[1].inactive).toBe(true);
+      expect(newsService.extractArticleText).toHaveBeenCalledWith('https://example.com/news/ai');
+      expect(res.json).toHaveBeenCalledWith(payload);
+    });
+
+    it('returns dedicated extraction failure payload for frontend fallback path', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'https://example.com/paywall' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('ARTICLE_EXTRACTION_FAILED'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'ARTICLE_EXTRACTION_FAILED',
+        fallback: true,
+        url: 'https://example.com/paywall',
+      });
+    });
+
+    it('returns 400 for invalid protocol payload', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'ftp://example.com/news/ai' } } as any;
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(newsService.extractArticleText).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for invalid body payload', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: {} } as any;
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(newsService.extractArticleText).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 for non-extraction service errors', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'https://example.com/news/ai' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('UNEXPECTED_FAILURE'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Failed to extract article text' });
+    });
+
+    it('returns 400 for unallowed internal targets', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'http://localhost:3000/private' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('ARTICLE_URL_NOT_ALLOWED'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'URL_NOT_ALLOWED' });
+    });
+
+    it('returns 400 for blocked IPv6 internal targets', async () => {
+      const handler = getHandler('/news/extract', 'post');
+      const res = mockRes();
+      const req = { body: { url: 'http://[::1]/private' } } as any;
+      (newsService.extractArticleText as any).mockRejectedValue(new Error('ARTICLE_URL_NOT_ALLOWED'));
+
+      await handler(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'URL_NOT_ALLOWED' });
     });
   });
 
@@ -473,8 +690,6 @@ describe('API Routes', () => {
         twitchUsername: '',
         youtubeChannels: '',
         youtubeChannelIds: '',
-        twitterUsername: '',
-        twitterAccounts: '',
         trumpMinCriticality: 3,
         customRssFeeds: '',
         refreshInterval: 30,

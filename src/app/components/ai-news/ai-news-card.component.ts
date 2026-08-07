@@ -1,15 +1,18 @@
-import { Component, input } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AiNewsItem } from '../../models';
 
 @Component({
   selector: 'app-ai-news-card',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule],
   template: `
     @if (item()) {
-      <a [href]="item()!.url" target="_blank"
-         class="block px-4 py-3 border-b border-[#1E1E2E]/50 last:border-0 hover:bg-white/[0.03] transition-colors group">
+      <div role="button" tabindex="0"
+         (click)="articleClick.emit($event)"
+         (keydown.enter)="articleClick.emit($event)"
+         class="block px-4 py-3 border-b border-[#1E1E2E]/50 last:border-0 hover:bg-white/[0.03] transition-colors group cursor-pointer">
         <h3 class="text-[13px] font-medium text-text-primary group-hover:text-primary transition-colors line-clamp-2 leading-snug">
           {{ item()!.title }}
         </h3>
@@ -24,17 +27,18 @@ import { AiNewsItem } from '../../models';
           }
           <span class="font-label-caps text-[9px] text-text-muted">{{ item()!.pubDate | date:'MMM d' }}</span>
           @if (item()!.categories) {
-            <span class="font-label-caps text-[8px] text-text-muted/60 truncate max-w-[120px]" [title]="item()!.categories!">
+            <span class="font-label-caps text-[10px] text-text-muted/60 truncate max-w-[120px]" [title]="item()!.categories!">
               · {{ item()!.categories }}
             </span>
           }
         </div>
-      </a>
+      </div>
     }
   `,
 })
 export class AiNewsCardComponent {
   item = input<AiNewsItem | null>(null);
+  articleClick = output<Event>();
 
   getSourceColor(): string {
     switch (this.item()?.source) {

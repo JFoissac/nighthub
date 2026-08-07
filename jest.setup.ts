@@ -1,17 +1,12 @@
+import 'zone.js';
+import 'zone.js/testing';
+
 import { setupZoneTestEnv } from 'jest-preset-angular/setup-env/zone';
 
 setupZoneTestEnv();
 
-(global as any).jest = {
-  fn: () => {
-    const fn = (...args: any[]) => {};
-    fn.mock = { calls: [] };
-    fn.mockReturnValue = (val: any) => {
-      fn.__returnValue = val;
-      return fn;
-    };
-    fn.__returnValue = undefined;
-    return fn;
-  },
-  mock: () => {},
-};
+const globalAny = globalThis as any;
+
+if (!globalAny.jest && globalAny.vi) {
+  globalAny.jest = globalAny.vi;
+}

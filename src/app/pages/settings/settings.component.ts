@@ -1,12 +1,13 @@
-import { Component, OnInit, signal, inject } from '@angular/core';
+import { Component, OnInit, signal, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { ApiService, AuthStatus, UserPreferences } from '../../services/api.service';
+import { ApiService, UserPreferences } from '../../services/api.service';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="min-h-screen bg-background p-6">
@@ -32,21 +33,6 @@ import { ApiService, AuthStatus, UserPreferences } from '../../services/api.serv
           <p class="text-text-secondary text-sm mb-6">Configurez vos chaînes et profils sans OAuth.</p>
 
           <div class="space-y-6">
-
-            <!-- Twitter / X -->
-            <div class="space-y-2">
-              <div class="flex items-center gap-2">
-                <span class="text-xl">🐦</span>
-                <label class="font-medium text-text-primary">X / Twitter — Nom d'utilisateur</label>
-              </div>
-              <p class="text-xs text-text-secondary">Entrez votre username pour voir votre timeline via Nitter.</p>
-              <input
-                type="text"
-                [(ngModel)]="prefs.twitterUsername"
-                placeholder="ex: elonmusk"
-                class="w-full px-4 py-2 bg-background border border-border rounded-lg text-text-primary focus:border-primary focus:outline-none font-mono text-sm"
-              />
-            </div>
 
             <!-- Twitch -->
             <div class="space-y-2">
@@ -144,8 +130,6 @@ import { ApiService, AuthStatus, UserPreferences } from '../../services/api.serv
 export class SettingsComponent implements OnInit {
   private apiService = inject(ApiService);
 
-  authStatus = signal<AuthStatus | null>(null);
-  isCheckingAuth = signal(true);
   isSaving = signal(false);
   isRefreshing = signal(false);
   saved = signal(false);
@@ -157,11 +141,15 @@ export class SettingsComponent implements OnInit {
     twitchUsername: '',
     youtubeChannels: '',
     youtubeChannelIds: '',
-    twitterUsername: '',
-    twitterAccounts: '',
     trumpMinCriticality: 0,
     customRssFeeds: '',
     refreshInterval: 30,
+    themeOledBlack: false,
+    marketRefreshInterval: 60,
+    trumpRefreshInterval: 144,
+    newsRefreshInterval: 30,
+    streamsRefreshInterval: 5,
+    youtubeRefreshInterval: 30,
   };
 
   twitchList = signal<string[]>([]);

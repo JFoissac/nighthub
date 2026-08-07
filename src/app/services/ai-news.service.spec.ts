@@ -35,7 +35,7 @@ describe('AiNewsService', () => {
       expect(firstItem).toHaveProperty('source');
       expect(firstItem).toHaveProperty('url');
       expect(firstItem).toHaveProperty('summary');
-      expect(firstItem).toHaveProperty('timestamp');
+      expect(firstItem).toHaveProperty('pubDate');
     });
 
     it('should have valid source values', () => {

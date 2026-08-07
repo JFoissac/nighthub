@@ -1,6 +1,8 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RouterTestingModule } from '@angular/router/testing';
+import { of } from 'rxjs';
 import { HeaderComponent } from './header.component';
+import { ApiService } from '../../services/api.service';
 
 describe('HeaderComponent', () => {
   let component: HeaderComponent;
@@ -9,6 +11,17 @@ describe('HeaderComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [HeaderComponent, RouterTestingModule],
+      providers: [
+        {
+          provide: ApiService,
+          useValue: {
+            getPreferences: jest.fn().mockReturnValue(of({
+              themeOledBlack: false,
+            })),
+            savePreferences: jest.fn().mockReturnValue(of({})),
+          },
+        },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(HeaderComponent);
@@ -29,5 +42,15 @@ describe('HeaderComponent', () => {
   it('should render NightHub title', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.textContent).toContain('NIGHTHUB');
+  });
+
+  it('should expose refresh, options and sources actions without the old stats strip', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('button[aria-label="Options"]')).toBeTruthy();
+    expect(compiled.querySelector('button[aria-label="Sources"]')).toBeTruthy();
+    expect(compiled.querySelector('button[aria-label="Refresh dashboard"]')).toBeTruthy();
+    expect(compiled.textContent).not.toContain('VID:');
+    expect(compiled.textContent).not.toContain('NEWS:');
+    expect(compiled.textContent).not.toContain('TWEETS:');
   });
 });

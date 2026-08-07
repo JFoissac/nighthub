@@ -1,80 +1,225 @@
-import cron from 'node-cron';
-import { weatherService } from './weather.service';
-import { newsService } from './news.service';
-import { twitterService } from './twitter.service';
-import { youtubeService } from './youtube.service';
-import { twitchService } from './twitch.service';
-import { trumpService } from './trump.service';
+import { logger } from '../utils/logger';
+import { RELEVANCE } from '../config/constants';
+import { createAggregatorCronJobs } from '../jobs/aggregator.cron';
+import type { WeatherService } from './weather.service';
+import type { NewsService } from './news.service';
+import type { YoutubeService } from './youtube.service';
+import type { TwitchService } from './twitch.service';
+import type { TrumpService } from './trump.service';
+import type { MarketService } from './market.service';
+import * as fs from 'fs';
+import * as path from 'path';
+
+export type AggregatorWeatherService = Pick<WeatherService, 'getWeeklyForecast'>;
+export type AggregatorNewsService = Pick<NewsService, 'fetchAiNews' | 'getCachedNews'>;
+export type AggregatorYoutubeService = Pick<
+  YoutubeService,
+  'fetchAndCacheLatestVideos' | 'getLatestVideos' | 'getCachedLiveStreams' | 'verifyAndCleanLiveStreams'
+>;
+export type AggregatorTwitchService = Pick<
+  TwitchService,
+  'getFollowedStreams' | 'getLiveStreamsFast' | 'refreshLiveCacheLight'
+>;
+export type AggregatorTrumpService = Pick<TrumpService, 'fetchTrumpTweets' | 'getCachedTrumpTweets'>;
+export type AggregatorMarketService = Pick<MarketService, 'getLiveMarketData'>;
+
+export type AggregatorServiceDeps = {
+  weatherService: AggregatorWeatherService;
+  newsService: AggregatorNewsService;
+  youtubeService: AggregatorYoutubeService;
+  twitchService: AggregatorTwitchService;
+  trumpService: AggregatorTrumpService;
+  marketService: AggregatorMarketService;
+};
 
 export class AggregatorService {
-  start(): void {
-    this.initCronJobs();
+  private isShuttingDown = false;
+  private cronJobs: { stop: () => void } | null = null;
+  private dashboardCache: { data: any; fetchedAt: number } | null = null;
+  private dashboardRebuildInFlight: Promise<any> | null = null;
+
+  static readonly DASHBOARD_CACHE_TTL_MS = 30_000;
+  static readonly SOURCE_TIMEOUT_MS = 3_000;
+  /** Âge max des données en base pour considérer un boot « frais » (skip refresh initial). */
+  static readonly BOOT_FRESH_MAX_AGE_MS = 10 * 60_000;
+  /** Fichier du snapshot dashboard persistant (même pattern que le snapshot trump). */
+  static readonly SNAPSHOT_FILE = path.join(process.cwd(), 'data', 'dashboard-snapshot.json');
+
+  constructor(private readonly deps: AggregatorServiceDeps) {
+    this.loadPersistedSnapshot();
   }
 
-  private initCronJobs(): void {
-    // Refresh all data every 30 minutes
-    cron.schedule('*/30 * * * *', () => {
-      console.log('[Cron] Refreshing all data...');
-      this.refreshAll();
-    });
+  /** Charge le snapshot dashboard persistant au démarrage (rendu <100ms à froid total). */
+  private loadPersistedSnapshot(): void {
+    if (process.env.NODE_ENV === 'test') return; // jamais de snapshot dans les tests
+    try {
+      if (!fs.existsSync(AggregatorService.SNAPSHOT_FILE)) return;
+      const raw = fs.readFileSync(AggregatorService.SNAPSHOT_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.data && typeof parsed.fetchedAt === 'number') {
+        this.dashboardCache = { data: parsed.data, fetchedAt: parsed.fetchedAt };
+        logger.info('Dashboard snapshot loaded from disk', { ageMin: Math.round((Date.now() - parsed.fetchedAt) / 60000) });
+      }
+    } catch (err) {
+      logger.warn('Failed to load dashboard snapshot', { error: (err as Error).message });
+    }
+  }
 
-    // Check Twitch live status every 5 minutes
-    cron.schedule('*/5 * * * *', () => {
-      console.log('[Cron] Checking Twitch streams...');
-      this.refreshTwitch();
-    });
+  /** Persiste le snapshot dashboard après un rebuild réussi. */
+  private persistSnapshot(data: any): void {
+    if (process.env.NODE_ENV === 'test') return; // jamais d'écriture disque dans les tests
+    // Ne persister que si au moins une section contient des données — un
+    // snapshot tout vide servirait un dashboard vide au prochain boot à froid.
+    const hasData = ['weather', 'market', 'streams', 'videos', 'news', 'trump'].some(
+      (k) => data?.[k] && (Array.isArray(data[k]) ? data[k].length > 0 : true),
+    );
+    if (!hasData) return;
+    try {
+      const dir = path.dirname(AggregatorService.SNAPSHOT_FILE);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(AggregatorService.SNAPSHOT_FILE, JSON.stringify({ data, fetchedAt: Date.now() }));
+    } catch (err) {
+      logger.warn('Failed to persist dashboard snapshot', { error: (err as Error).message });
+    }
+  }
 
-    // Verify YouTube live stream status every 5 minutes
-    cron.schedule('*/5 * * * *', () => {
-      console.log('[Cron] Verifying YouTube live streams...');
-      youtubeService.verifyAndCleanLiveStreams().catch(console.error);
-    });
+  /**
+   * Vrai si les données en base sont suffisamment fraîches pour skipper le
+   * refresh initial au boot (P0 : évite 13s→3min de crawl à chaque démarrage).
+   */
+  async isDataFresh(maxAgeMs: number = AggregatorService.BOOT_FRESH_MAX_AGE_MS): Promise<boolean> {
+    try {
+      const { prisma } = await import('../db/prisma.client');
+      const since = new Date(Date.now() - maxAgeMs);
+      const [videos, news, tweets, streams] = await Promise.all([
+        prisma.youtubeVideo.count({ where: { fetchedAt: { gte: since } } }),
+        prisma.aiNewsItem.count({ where: { fetchedAt: { gte: since } } }),
+        prisma.tweet.count({ where: { fetchedAt: { gte: since } } }),
+        prisma.twitchStream.count({ where: { fetchedAt: { gte: since } } }),
+      ]);
+      // Au moins 3 sources sur 4 fraîches → on considère le boot frais.
+      const fresh = [videos, news, tweets, streams].filter((n) => n > 0).length;
+      return fresh >= 3;
+    } catch (err) {
+      logger.warn('isDataFresh check failed', { error: (err as Error).message });
+      return false;
+    }
+  }
 
-    // Refresh Trump tweets every 15 minutes
-    cron.schedule('*/15 * * * *', () => {
-      console.log('[Cron] Refreshing Trump tweets...');
-      this.refreshTrump();
-    });
+  private static withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Source timed out after ${ms}ms`)), ms);
+      }),
+    ]);
+  }
 
-    console.log('[Aggregator] Cron jobs initialized');
+  /** Returns the current dashboard snapshot without any freshness check (may be stale). */
+  getDashboardSnapshot(): any | null {
+    return this.dashboardCache?.data ?? null;
+  }
+
+  /** Forces the next getDashboardData() to rebuild the snapshot. */
+  invalidateDashboardCache(): void {
+    this.dashboardCache = null;
+  }
+
+  start(): void {
+    if (this.cronJobs) {
+      return;
+    }
+    this.cronJobs = createAggregatorCronJobs({
+      aggregatorService: this,
+      youtubeService: this.deps.youtubeService,
+      shouldRun: () => !this.isShuttingDown,
+      log: logger,
+    });
+    logger.info('Aggregator cron jobs started');
+  }
+
+  stop(): void {
+    this.isShuttingDown = true;
+    this.cronJobs?.stop();
+    this.cronJobs = null;
+    logger.info('Aggregator cron jobs stopped');
   }
 
   async refreshAll(): Promise<void> {
     try {
-      await Promise.allSettled([
-        weatherService.getWeeklyForecast('Caen'),
-        newsService.fetchAiNews(),
-        // twitterService.getTimeline(20), // DISABLED — Nitter is dead
-        youtubeService.fetchAndCacheLatestVideos(),
-        twitchService.getFollowedStreams(),
-        trumpService.fetchTrumpTweets(20),
-      ]);
-      console.log('[Aggregator] All data refreshed successfully');
+      // P0 : NE PAS invalider le snapshot au début — le dashboard continue de
+      // servir l'ancien snapshot (stale) pendant le refresh au lieu de bloquer.
+      const tasks = [
+        { name: 'weather', promise: this.deps.weatherService.getWeeklyForecast('Caen') },
+        { name: 'news', promise: this.deps.newsService.fetchAiNews() },
+        { name: 'youtube', promise: this.deps.youtubeService.fetchAndCacheLatestVideos() },
+        { name: 'twitch', promise: this.deps.twitchService.getFollowedStreams() },
+        { name: 'trump', promise: this.deps.trumpService.fetchTrumpTweets(20) },
+      ];
+      const results = await Promise.allSettled(tasks.map(task => task.promise));
+      const failures = results
+        .map((result, index) => {
+          if (result.status === 'fulfilled') {
+            return null;
+          }
+          const reason = result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason);
+          return {
+            task: tasks[index].name,
+            reason,
+          };
+        })
+        .filter((failure): failure is { task: string; reason: string } => failure !== null);
+
+      if (failures.length > 0) {
+        console.warn(
+          `[Aggregator] Partial data refresh failure (${failures.length}/${tasks.length}):`,
+          failures,
+        );
+        return;
+      }
+
+      logger.info('All data refreshed successfully');
+      // P0-2 : une fois le refresh réussi, invalider puis rebuild immédiatement
+      // pour que le dashboard serve les données fraîches sans attendre le TTL.
+      this.invalidateDashboardCache();
+      await this.getDashboardData().catch((e: unknown) =>
+        logger.warn('Dashboard rebuild after refresh failed', { error: (e as Error).message }));
     } catch (error) {
-      console.error('[Aggregator] Error refreshing all data:', error);
+      logger.error('Error refreshing all data', error);
     }
   }
 
   async refreshTwitch(): Promise<void> {
     try {
-      await twitchService.getFollowedStreams();
+      const result = await this.deps.twitchService.refreshLiveCacheLight();
+      if (!result.changed) {
+        logger.debug('Twitch check: no changes', { totalLive: result.totalLive });
+        return;
+      }
+      logger.info('Twitch check updated', {
+        newLives: result.newLives,
+        endedLives: result.endedLives,
+        totalLive: result.totalLive,
+      });
     } catch (error) {
-      console.error('[Aggregator] Error refreshing Twitch:', error);
+      logger.error('Error refreshing Twitch', error);
     }
   }
 
   async refreshTrump(): Promise<void> {
     try {
-      await trumpService.fetchTrumpTweets(20);
+      await this.deps.trumpService.fetchTrumpTweets(20);
     } catch (error) {
-      console.error('[Aggregator] Error refreshing Trump:', error);
+      logger.error('Error refreshing Trump', error);
     }
   }
 
   calculateRelevanceScore(item: any, type: string): number {
     const now = new Date();
     let ageHours = 0;
-    let maxAge = 24;
+    let maxAge: number = RELEVANCE.MAX_AGE_DEFAULT_HOURS;
 
     if (item.fetchedAt) {
       ageHours = (now.getTime() - new Date(item.fetchedAt).getTime()) / (1000 * 60 * 60);
@@ -84,19 +229,19 @@ export class AggregatorService {
 
     switch (type) {
       case 'video':
-        maxAge = 168;
+        maxAge = RELEVANCE.MAX_AGE_VIDEO_HOURS as number;
         break;
       case 'news':
-        maxAge = 1;
+        maxAge = RELEVANCE.MAX_AGE_NEWS_HOURS as number;
         break;
       case 'stream':
-        maxAge = 48;
+        maxAge = RELEVANCE.MAX_AGE_STREAM_HOURS as number;
         break;
       case 'trump':
-        maxAge = 12;
+        maxAge = RELEVANCE.MAX_AGE_TRUMP_HOURS as number;
         break;
       default:
-        maxAge = 24;
+        maxAge = RELEVANCE.MAX_AGE_DEFAULT_HOURS as number;
     }
 
     const recencyScore = Math.max(0, 1 - ageHours / maxAge);
@@ -107,7 +252,7 @@ export class AggregatorService {
     if (item.views) engagementScore += Math.log10(item.views + 1) / 10;
     if (item.viewerCount) engagementScore += Math.log10(item.viewerCount + 1) / 10;
 
-    const score = 0.5 * recencyScore + 0.3 * engagementScore + 0.2;
+    const score = RELEVANCE.RECENCY_WEIGHT * recencyScore + RELEVANCE.ENGAGEMENT_WEIGHT * engagementScore + RELEVANCE.BASE_SCORE;
 
     return Math.min(1, Math.max(0, score));
   }
@@ -122,6 +267,40 @@ export class AggregatorService {
   }
 
   async getDashboardData(onProgress?: (step: string) => void): Promise<any> {
+    const now = Date.now();
+
+    // Fast path: serve the fresh in-memory snapshot without touching services.
+    if (this.dashboardCache && now - this.dashboardCache.fetchedAt < AggregatorService.DASHBOARD_CACHE_TTL_MS) {
+      onProgress?.('Done');
+      return this.dashboardCache.data;
+    }
+
+    // Stale-while-revalidate: a stale snapshot is served immediately and the
+    // rebuild happens in the background, so the dashboard never blocks.
+    if (this.dashboardCache) {
+      if (!this.dashboardRebuildInFlight) {
+        this.dashboardRebuildInFlight = this.rebuildDashboard(onProgress).finally(() => {
+          this.dashboardRebuildInFlight = null;
+        });
+      }
+      onProgress?.('Done');
+      return this.dashboardCache.data;
+    }
+
+    // No snapshot yet (first load): wait for the rebuild, bounded by per-source
+    // timeouts so it can never stall the response for long. P1 : si un rebuild
+    // est déjà en cours (pre-warm au boot), on attend celui-là au lieu d'en
+    // lancer un deuxième (contention évitée).
+    if (this.dashboardRebuildInFlight) {
+      return this.dashboardRebuildInFlight;
+    }
+    this.dashboardRebuildInFlight = this.rebuildDashboard(onProgress).finally(() => {
+      this.dashboardRebuildInFlight = null;
+    });
+    return this.dashboardRebuildInFlight;
+  }
+
+  private async rebuildDashboard(onProgress?: (step: string) => void): Promise<any> {
     try {
       const { prisma } = await import('../db/prisma.client');
       const prefs = await prisma.userPreference.findFirst();
@@ -129,35 +308,41 @@ export class AggregatorService {
       const trumpMinCriticality = prefs?.trumpMinCriticality || 0;
 
       onProgress?.('Loading weather...');
-      const weather = await weatherService.getWeeklyForecast(weatherCity).catch(() => null);
-
-      // Fast sources in parallel
       onProgress?.('Loading streams, videos, news...');
-      const [streams, videos, news, trump, youtubeLives] = await Promise.allSettled([
-        twitchService.getFollowedStreams(),
-        youtubeService.getLatestVideos(20),
-        newsService.getCachedNews(20),
-        trumpService.getCachedTrumpTweets(20),
-        youtubeService.getCachedLiveStreams(10),
-      ]);
 
-      // Twitter/Nitter is DISABLED — all public instances are dead
-      const tweetsResult: any[] = [];
+      // Every external source is bounded by a hard timeout so a blocked
+      // network can never stall the dashboard for long.
+      const source = (promise: Promise<any>) => AggregatorService.withTimeout(promise, AggregatorService.SOURCE_TIMEOUT_MS);
+
+      const [weather, streams, videos, news, trump, youtubeLives, market] = await Promise.allSettled([
+        source(this.deps.weatherService.getWeeklyForecast(weatherCity)),
+        source(this.deps.twitchService.getLiveStreamsFast(20)),
+        source(this.deps.youtubeService.getLatestVideos(20)),
+        source(this.deps.newsService.getCachedNews(20)),
+        source(this.deps.trumpService.getCachedTrumpTweets(20)),
+        source(this.deps.youtubeService.getCachedLiveStreams(10)),
+        source(this.deps.marketService.getLiveMarketData()),
+      ]);
 
       onProgress?.('Done');
 
+      const weatherData = weather.status === 'fulfilled' ? weather.value : null;
+      const twitchStreams = streams.status === 'fulfilled' && Array.isArray(streams.value) ? streams.value : [];
+      const videoData = videos.status === 'fulfilled' && Array.isArray(videos.value) ? videos.value : [];
+      const newsData = news.status === 'fulfilled' && Array.isArray(news.value) ? news.value : [];
+      const youtubeLiveData = youtubeLives.status === 'fulfilled' && Array.isArray(youtubeLives.value) ? youtubeLives.value : [];
+      const marketData = market.status === 'fulfilled' && Array.isArray(market.value) ? market.value : [];
+
       // Filter trump tweets by min criticality preference
-      let trumpData = trump.status === 'fulfilled' ? trump.value : [];
+      let trumpData = trump.status === 'fulfilled' && Array.isArray(trump.value) ? trump.value : [];
       if (trumpMinCriticality > 0) {
         trumpData = trumpData.filter((t: any) => t.criticality >= trumpMinCriticality);
       }
 
       // Merge YouTube live streams into Twitch streams
-      const twitchStreams = streams.status === 'fulfilled' ? streams.value : [];
-      const ytLives = youtubeLives.status === 'fulfilled' ? youtubeLives.value : [];
       const mergedStreams = [
         ...twitchStreams,
-        ...ytLives.map((v: any) => ({
+        ...youtubeLiveData.map((v: any) => ({
           id: v.youtubeId || v.id,
           twitchId: v.youtubeId || v.id,
           title: v.title,
@@ -171,20 +356,25 @@ export class AggregatorService {
         })),
       ];
 
-      return {
-        weather,
-        tweets: tweetsResult,
+      const data = {
+        weather: weatherData,
+        market: marketData,
         streams: mergedStreams,
-        videos: videos.status === 'fulfilled' ? this.sortByRelevance(videos.value, 'video') : [],
-        news: news.status === 'fulfilled' ? news.value : [],
+        videos: this.sortByRelevance(videoData, 'video'),
+        news: newsData,
         trump: trumpData,
         refreshedAt: new Date(),
       };
+
+      this.dashboardCache = { data, fetchedAt: Date.now() };
+      // P0-3 : persister le snapshot pour un rendu <100ms au prochain boot à froid.
+      this.persistSnapshot(data);
+      return data;
     } catch (error) {
-      console.error('[Aggregator] Error getting dashboard data:', error);
+      logger.error('Error getting dashboard data', error);
       return {
         weather: null,
-        tweets: [],
+        market: [],
         streams: [],
         videos: [],
         news: [],
@@ -195,4 +385,6 @@ export class AggregatorService {
   }
 }
 
-export const aggregatorService = new AggregatorService();
+export function createAggregatorService(deps: AggregatorServiceDeps): AggregatorService {
+  return new AggregatorService(deps);
+}

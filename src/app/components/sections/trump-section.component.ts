@@ -1,20 +1,27 @@
-import { Component, input, output, inject } from '@angular/core';
+import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TrumpItem } from '../../models';
+import { TrumpNewsItem } from '../../models';
 import { TrumpStore } from '../../stores/trump.store';
+import { ApiService } from '../../services/api.service';
+import { TrumpNewsService } from '../../services/trump-news.service';
 import { TrumpCardComponent } from '../trump/trump-card.component';
+import { TrumpNewsCardComponent } from '../trump/trump-news-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
 
 @Component({
   selector: 'app-trump-section',
   standalone: true,
-  imports: [CommonModule, TrumpCardComponent, InfiniteScrollDirective],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [CommonModule, TrumpCardComponent, TrumpNewsCardComponent, InfiniteScrollDirective],
   template: `
     <section class="neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 200ms">
       <div class="px-4 py-3 border-b border-[#1E1E2E] flex items-center justify-between bg-[#131318]/40 flex-shrink-0">
         <div class="flex items-center gap-2">
           <span class="font-label-caps text-[11px] tracking-widest text-on-surface-variant">TRUMP WATCH</span>
           <span class="font-label-caps text-[9px] text-text-muted">({{ store.count() }})</span>
+          @if (hasBreakingNews()) {
+            <span class="font-label-caps text-[9px] px-1.5 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded animate-pulse">BREAKING</span>
+          }
         </div>
         <div class="flex items-center gap-2">
           @if (store.isLoading()) {
@@ -26,6 +33,33 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
         </div>
       </div>
       <div class="flex-1 overflow-y-auto" style="max-height: 500px">
+        @if (news().length) {
+          <div class="border-b border-[#1E1E2E] bg-[#131318]/20">
+            <div class="px-4 pt-2.5 pb-1 flex items-center justify-between">
+              <span class="font-label-caps text-[9px] tracking-widest text-text-muted">📺 TV / NEWS</span>
+              @if (hasBreakingNews()) {
+                <span class="font-label-caps text-[9px] px-1.5 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded animate-pulse">BREAKING TV/NEWS</span>
+              }
+            </div>
+            @for (n of news(); track n.id) {
+              <app-trump-news-card [item]="n"></app-trump-news-card>
+            }
+          </div>
+        }
+        @if (store.isLoading() && !store.count()) {
+          <div class="space-y-3 p-4">
+            @for (placeholder of [1, 2, 3]; track placeholder) {
+              <div class="rounded-xl border border-[#1E1E2E] bg-[#131318]/40 p-4 animate-pulse space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="h-3 w-28 rounded bg-[#1E1E2E]/70"></div>
+                  <div class="h-5 w-16 rounded-full bg-[#1E1E2E]/40"></div>
+                </div>
+                <div class="h-3 w-11/12 rounded bg-[#1E1E2E]/60"></div>
+                <div class="h-3 w-4/5 rounded bg-[#1E1E2E]/50"></div>
+              </div>
+            }
+          </div>
+        }
         @for (item of store.items(); track item.tweetId || item.id || $index) {
           <app-trump-card [item]="item"></app-trump-card>
         }
@@ -40,13 +74,37 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
             <span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING...</span>
           </div>
         }
-        @if (!store.count()) {
+        @if (!store.isLoading() && !store.count()) {
           <p class="font-label-caps text-[10px] text-text-muted p-4">NO DATA</p>
         }
       </div>
     </section>
   `,
 })
-export class TrumpSectionComponent {
+export class TrumpSectionComponent implements OnInit {
   readonly store = inject(TrumpStore);
+  private readonly api = inject(ApiService);
+  private readonly trumpNews = inject(TrumpNewsService);
+
+  readonly news = signal<TrumpNewsItem[]>([]);
+
+  readonly hasBreakingNews = computed(() => this.news().some((n) => n.isBreaking));
+
+  ngOnInit() {
+    window.setTimeout(() => {
+      if (this.store.count()) return;
+
+      this.api.getTrumpTweets(20).subscribe({
+        next: (items) => this.store.setItems(items),
+        error: () => this.store.setLoading(false),
+      });
+    });
+
+    window.setTimeout(() => {
+      this.trumpNews.getTrumpNews(8).subscribe({
+        next: (items) => this.news.set(items),
+        error: () => this.news.set([]),
+      });
+    });
+  }
 }

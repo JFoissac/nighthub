@@ -1,7 +1,18 @@
 # NightHub — Plan d'Implémentation & Correctifs
 
-**Date :** 25 avril 2026
-**Statut :** En cours — Phase de consolidation architecture + tests
+**Date :** 25 avril 2026 (dernière mise à jour : 7 août 2026)
+**Statut :** En cours — Consolidation (presque toutes les phases faites) + chantier perf chargement au lancement
+
+---
+
+## État actuel (7 août 2026)
+
+- **Perf boot réglée** (commit `4888db6`) : boot 60–120s → **5.8s** (listen-first + background tasks + snapshot Trump persistant + preWarm gate < 1h). Détails : `docs/BACKEND_REFACTOR.md` et skill `node-server-boot-performance` (réf. nighthub-boot-fix.md).
+- **Chantier en cours : chargement des données au lancement du back.** Le serveur écoute vite mais le premier remplissage des caches (Twitch GQL, YouTube RSS, X/Nitter, Trump, news, dashboard snapshot) prend du temps au démarrage → le dashboard peut être vide/stale au premier affichage. Review perf en cours (kimi) pour mesurer et prioriser les correctifs. Premières découvertes : refreshAll complet ~26s mais crawl YouTube 115 chaînes poursuit 180s+ ; double fetch confirmé (refreshAll + triggerBackgroundRefresh) ; gate preWarm potentiellement trop laxiste (1 vidéo fraîche sur 569 → skip).
+- **✅ Correctifs perf implémentés (commit 5a44a24)** : gate fraîcheur refreshAll au boot (<10 min → skip, évite 13s→3min de crawl), snapshot dashboard persistant `data/dashboard-snapshot.json` (rendu <100ms à froid), pré-warm AVANT refresh (premier GET servi immédiatement), pas d'invalidation du snapshot avant refresh réussi, dédup rebuild + garde fetchInFlight YouTube (fini le double crawl), weather cache-first 1h + dédup, timeout source 5s→3s, cleanOrphanChannelIds différé à t+60s. Tests : 73/73 sur les fichiers touchés.
+- **Chantier Trump Watch v2 (demande user 07/08)** : (1) afficher les images des posts Trump (non affichées actuellement), (2) analyse IA des posts pour ne remonter que les plus pertinents (provider configurable, fallback scoring), (3) veille « Trump à la TV / news / conférences de presse » via RSS médias filtrés + score IA (ex. tentative d'assassinat → visible dans la section). Subagent kimi en cours.
+- **Changements NON commités dans le repo** (au 07/08) : `server/src/routes/twitch.routes.ts`, `server/src/services/trump.service.ts`, `server/src/services/twitch.service.ts`, `server/data/trump-trained-profile.json`, frontend `settings-sources`, `stream-player-panel`, `trump-card`, `models/index.ts`, `api.service.ts`. À commiter/vérifier.
+- **Frontend** : Angular 21.2 + Nx 22.6, port dev 4201 (API backend 3001, CORS 4200+4201).
 
 ---
 
@@ -80,10 +91,65 @@ Couche 3 (fallback) : Piped / Invidious
 - Ou plus simple : ne pas persister les IDs résolus dans les préférences, les stocker dans une table dédiée `YoutubeChannel` avec relation handle → id + `lastResolvedAt`
 
 ### 4. Qualité backend
-- [ ] Extraire les routes Express monolithiques (`api.routes.ts` 324 lignes)
-- [ ] Sortir `node-cron` du constructeur de `AggregatorService`
-- [ ] Ajouter validation d'input (Zod) sur les routes
-- [ ] Remplacer les singletons manuels par des factories testables
+- [x] Extraire les routes Express monolithiques (`api.routes.ts` 324 lignes)
+- [x] Sortir `node-cron` du constructeur de `AggregatorService`
+- [x] Ajouter validation d'input (Zod) sur les routes
+- [x] Remplacer les singletons manuels restants par des factories testables
+- [x] Documenter le refactor backend dans `docs/BACKEND_REFACTOR.md`
+
+### 5. Refresh dashboard en arrière-plan
+- [x] Ajouter un bouton de refresh non bloquant sur le dashboard
+- [x] Rafraîchir les sections visibles en arrière-plan sans vider les listes
+- [x] Afficher un indicateur de chargement par section pendant le refresh
+- [x] Afficher un état "mis à jour" quand les nouvelles données sont arrivées
+- [x] Conserver la navigation et les panneaux ouverts pendant le refresh
+- [x] Ajouter les tests de non-régression sur le cycle refresh / rendu / stabilité UI
+
+### 6. Trump
+- [x] Revoir la criticité Trump
+- [x] Définir le bon seuil de déclenchement et l'impact sur l'affichage
+- [x] Réserver les `10/10` aux cas réellement critiques (guerre, frappes, sanctions massives, démissions majeures)
+- [x] Ajouter la remontée des payloads complets + métadonnées média (images, raw payload) pour audit/debug
+- [x] Mettre en place un entraînement de fond sur dataset historique avec snapshot JSON persistant
+
+**Flux retenu :**
+
+```
+Dataset historique local
+  → priorité: docs/djt_posts_dec2025.csv
+  → fallback: docs/tweets_01-08-2021.json
+
+Trainer de fond
+  → infère un corpus faible/bruité (posts bénins, économiques, nominations, alertes géopolitiques)
+  → calcule un profil appris
+  → persiste un snapshot JSON sur disque
+
+Scoring live
+  → charge le snapshot appris au démarrage
+  → fusionne ce profil avec le corpus manuel + les posts récents mis en cache
+  → n'analyse plus le dataset massif en ligne à chaque refresh
+```
+
+**Réglage criticité :**
+- `10/10` uniquement pour guerre/attaque/frappe/bombardement/blocage/sanctions extrêmes/tarifs massifs/démission top cabinet
+- pénalités fortes pour endorsements, télé-rallies, voter ID, record exports / trade deficit, nominations administratives
+- apprentissage négatif explicite sur les ancres de faux signaux récurrents
+
+### 7. Stocks
+- [x] Ajouter les gros tickers stocks au dashboard
+- [x] Couvrir au minimum les groupes suivants:
+  - [x] Magnificent 7
+  - [x] IA
+  - [x] Tech
+  - [x] Armement
+  - [x] Matières premières
+- [x] Définir le mapping des tickers et leurs catégories d'affichage
+- [x] Ajouter les tests de chargement et d'affichage des nouveaux groupes
+
+### 8. Nettoyage de référence et code mort
+- [x] Réduire `references/NowStreaming/` à un snapshot utile pour l'import Twitch
+- [x] Supprimer le clone Git embarqué et les assets de jeu non utilisés
+- [x] Nettoyer les imports/types manifestement inutilisés dans l'application et les tests
 
 ---
 
@@ -126,11 +192,13 @@ OPENWEATHERMAP_API_KEY=a74ad14a60941c71f4640e590912d3ac
 
 ## Phase actuelle : Consolidation
 
-1. ✅ Tests backend (youtube, twitter, news, aggregator, api.routes)
+1. ✅ Tests backend (youtube, twitter, news, aggregator, api.routes + trump.*, weather, twitch, market)
 2. ✅ Intégration backend dans Nx (`server/project.json`, tags, boundaries)
-3. ✅ Tests frontend (video-card, tweet-card, rss-detect-modal, api.service, header, weather, dashboard)
+3. ✅ Tests frontend (video-card, tweet-card, rss-detect-modal, api.service, header, weather, dashboard, ai-news, trump)
 4. ✅ Implémentation solution YouTube hybride (RSS + API v3 + Piped fallback)
 5. ✅ Validation Zod sur les routes (middleware `validateBody`)
 6. ✅ Retry RSS avec jitter + fallback Piped pour les durées
-7. ⏳ Refactoring routes backend (extraction modulaire)
-8. ⏳ Intégration backend dans workspace package manager
+7. ✅ Refactoring routes backend (extraction modulaire, controllers/middleware/jobs)
+8. ✅ Perf boot (listen-first, snapshot Trump, preWarm gate) — commit 4888db6
+9. ⏳ Intégration backend dans workspace package manager
+10. 🔄 **Perf chargement des données au lancement** : dashboard utilisable immédiatement (review kimi en cours → correctifs P0/P1/P2)
