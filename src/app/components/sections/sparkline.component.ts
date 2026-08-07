@@ -1,4 +1,4 @@
-import { Component, input, viewChild, ElementRef, AfterViewInit, OnDestroy, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, viewChild, ElementRef, AfterViewInit, OnDestroy, OnChanges, ChangeDetectionStrategy } from '@angular/core';
 import { Chart, Plugin } from 'chart.js/auto';
 
 /** Dessine les prix min/max aux extrémités réelles de la courbe (canvas = alignement parfait). */
@@ -56,12 +56,15 @@ export class SparklineComponent implements AfterViewInit, OnDestroy {
     gradient.addColorStop(0, this.positive() ? 'rgba(34,197,94,0.28)' : 'rgba(239,68,68,0.28)');
     gradient.addColorStop(1, 'rgba(0,0,0,0)');
 
+    const values = this.data();
+    const fmtP = (v: number) => `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
     this.chart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: this.data().map((_, i) => i),
+        labels: values.map((_, i) => i),
         datasets: [{
-          data: this.data(),
+          data: values,
           borderColor: color,
           backgroundColor: gradient,
           borderWidth: 1.5,
@@ -77,7 +80,7 @@ export class SparklineComponent implements AfterViewInit, OnDestroy {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 900, easing: 'easeOutQuart' },
+        animation: { duration: 1100, easing: 'easeOutQuart' },
         plugins: {
           legend: { display: false },
           tooltip: {
@@ -93,12 +96,41 @@ export class SparklineComponent implements AfterViewInit, OnDestroy {
           },
         },
         scales: {
-          x: { display: false },
+          x: this.showEdges()
+            ? {
+                display: true,
+                grid: { display: false },
+                ticks: {
+                  color: '#64748b',
+                  font: { family: 'JetBrains Mono', size: 9 },
+                  maxRotation: 0,
+                  // Prix en abscisse : début, milieu, fin
+                  callback: (_, index) => {
+                    const n = values.length;
+                    if (index === 0 || index === n - 1 || index === Math.floor(n / 2)) {
+                      return fmtP(values[index] ?? 0);
+                    }
+                    return '';
+                  },
+                },
+              }
+            : { display: false },
           y: { display: false },
         },
       },
       plugins: this.showEdges() ? [edgePricePlugin] : [],
     });
+  }
+
+  ngOnChanges() {
+    // Données mises à jour (refresh 60s) : re-trace animé sans recréer le chart
+    if (!this.chart) return;
+    const values = this.data();
+    if (!values.length) return;
+    const ds = this.chart.data.datasets[0];
+    ds.data = values;
+    ds.borderColor = this.positive() ? '#22c55e' : '#ef4444';
+    this.chart.update();
   }
 
   ngOnDestroy() {
