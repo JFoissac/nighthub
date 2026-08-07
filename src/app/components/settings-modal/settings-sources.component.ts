@@ -35,6 +35,26 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
                 </span>
               }
             </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              @if (twitchConnected()) {
+                <span class="text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  ✓ Compte Twitch connecté — lecture sans pub (Turbo)
+                </span>
+                <button
+                  (click)="disconnectTwitch()"
+                  class="px-3 py-1 text-xs rounded bg-background border border-border text-text-secondary hover:text-red-400 hover:border-red-400/40 transition-colors"
+                >
+                  Se déconnecter
+                </button>
+              } @else {
+                <button
+                  (click)="connectTwitch()"
+                  class="px-3 py-1 text-xs rounded bg-purple-600/20 text-purple-300 border border-purple-600/30 hover:bg-purple-600/30 transition-colors"
+                >
+                  Se connecter à Twitch (supprime les pubs avec Turbo)
+                </button>
+              }
+            </div>
             <div class="space-y-2">
               <label class="text-sm text-text-secondary">Coller une liste de chaînes (une par ligne ou séparées par des virgules)</label>
               <textarea
@@ -358,10 +378,34 @@ export class SettingsSourcesComponent implements OnInit {
   youtubeRemapHandleInput = '';
   youtubeRemapChannelIdInput = '';
 
+  twitchConnected = signal(false);
+
   youtubeRemapSuspiciousCount = signal(0);
 
   ngOnInit() {
     this.loadPreferences();
+    this.checkTwitchAuth();
+  }
+
+  checkTwitchAuth() {
+    this.apiService.getAuthStatus().subscribe({
+      next: (status) => this.twitchConnected.set(!!status.twitch),
+      error: () => this.twitchConnected.set(false),
+    });
+  }
+
+  connectTwitch() {
+    this.apiService.connectTwitch();
+    // Re-check after the OAuth popup round-trip (user may take a while).
+    window.setTimeout(() => this.checkTwitchAuth(), 5000);
+    window.setTimeout(() => this.checkTwitchAuth(), 15000);
+  }
+
+  disconnectTwitch() {
+    this.apiService.logout('twitch').subscribe({
+      next: () => this.twitchConnected.set(false),
+      error: () => this.twitchConnected.set(false),
+    });
   }
 
   loadPreferences() {

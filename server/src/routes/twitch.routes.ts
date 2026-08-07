@@ -41,8 +41,25 @@ async function importTwitchList(req: Request, res: Response) {
   }
 }
 
+async function getPlayback(req: Request, res: Response) {
+  try {
+    const channel = String(req.query.channel || '').trim().toLowerCase();
+    if (!channel) {
+      res.status(400).json({ error: 'channel query param is required' });
+      return;
+    }
+    // Viewer-authenticated playback token when the Twitch account is linked
+    // (removes preroll ads for Twitch Turbo/Prime), anonymous otherwise.
+    const result = await twitchService.getPlaybackToken(channel);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get playback token' });
+  }
+}
+
 router.get('/streams', getStreams);
 router.get('/follows', getFollows);
 router.post('/import-list', validateBody(twitchImportSchema), importTwitchList);
+router.get('/playback', getPlayback);
 
 export default router;

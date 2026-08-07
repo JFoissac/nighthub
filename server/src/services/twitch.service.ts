@@ -442,15 +442,190 @@ export class TwitchService {
     return cached;
   }
 
-  /** Legacy OAuth methods - now no-ops since we use GQL */
-  getAuthUrl(): string { return ''; }
-  async exchangeCodeForTokens(_code: string): Promise<boolean> { return false; }
-  async isConnected(): Promise<boolean> {
-    const channels = await this.getFollowedChannels();
-    return channels.length > 0;
+  /** ---- Twitch OAuth (Twitch Turbo-aware playback) ---- */
+
+  private readonly TWITCH_AUTH_URL = 'https://id.twitch.tv/oauth2/authorize';
+  private readonly TWITCH_TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
+  private static readonly TOKEN_USER_ID = 'local';
+
+  private getTwitchClientConfig() {
+    return {
+      clientId: process.env.TWITCH_CLIENT_ID || '',
+      clientSecret: process.env.TWITCH_CLIENT_SECRET || '',
+      redirectUri: process.env.TWITCH_REDIRECT_URI || 'http://localhost:3001/api/auth/twitch/callback',
+    };
   }
+
+  getAuthUrl(): string {
+    const { clientId, redirectUri } = this.getTwitchClientConfig();
+    if (!clientId) return '';
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'user:read:email',
+    });
+    return `${this.TWITCH_AUTH_URL}?${params.toString()}`;
+  }
+
+  async exchangeCodeForTokens(code: string): Promise<boolean> {
+    try {
+      const { clientId, clientSecret, redirectUri } = this.getTwitchClientConfig();
+      if (!clientId || !clientSecret) return false;
+
+      const res = await fetch(this.TWITCH_TOKEN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          grant_type: 'authorization_code',
+          redirect_uri: redirectUri,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) {
+        logger.error('[Twitch] Token exchange failed', { status: res.status });
+        return false;
+      }
+      const data: any = await res.json();
+      if (!data.access_token) return false;
+
+      const expiresAt = new Date(Date.now() + (data.expires_in || 3600) * 1000);
+      await prisma.oAuthToken.upsert({
+        where: { provider_userId: { provider: 'twitch', userId: TwitchService.TOKEN_USER_ID } },
+        update: {
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token ?? null,
+          expiresAt,
+        },
+        create: {
+          provider: 'twitch',
+          userId: TwitchService.TOKEN_USER_ID,
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token ?? null,
+          expiresAt,
+        },
+      });
+      logger.info('[Twitch] OAuth tokens stored');
+      return true;
+    } catch (e) {
+      logger.error('[Twitch] Token exchange error', e);
+      return false;
+    }
+  }
+
+  private async getAccessToken(): Promise<string | null> {
+    try {
+      const row = await prisma.oAuthToken.findUnique({
+        where: { provider_userId: { provider: 'twitch', userId: TwitchService.TOKEN_USER_ID } },
+      });
+      if (!row) return null;
+
+      const expiresAt = row.expiresAt ? row.expiresAt.getTime() : 0;
+      if (expiresAt - Date.now() < 5 * 60 * 1000) {
+        if (!row.refreshToken) return null;
+        const { clientId, clientSecret } = this.getTwitchClientConfig();
+        const res = await fetch(this.TWITCH_TOKEN_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            grant_type: 'refresh_token',
+            refresh_token: row.refreshToken,
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) {
+          logger.error('[Twitch] Token refresh failed', { status: res.status });
+          return null;
+        }
+        const data: any = await res.json();
+        if (!data.access_token) return null;
+        await prisma.oAuthToken.update({
+          where: { id: row.id },
+          data: {
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token ?? row.refreshToken,
+            expiresAt: new Date(Date.now() + (data.expires_in || 3600) * 1000),
+          },
+        });
+        return data.access_token;
+      }
+      return row.accessToken;
+    } catch (e) {
+      logger.error('[Twitch] getAccessToken error', e);
+      return null;
+    }
+  }
+
+  async isConnected(): Promise<boolean> {
+    return (await this.getAccessToken()) !== null;
+  }
+
   async disconnect(): Promise<void> {
-    await this.saveFollowedChannels([]);
+    try {
+      await prisma.oAuthToken.deleteMany({ where: { provider: 'twitch' } });
+      logger.info('[Twitch] OAuth tokens removed');
+    } catch (e) {
+      logger.error('[Twitch] disconnect error', e);
+    }
+  }
+
+  /**
+   * Playback token for the embedded player. When the user's Twitch account is
+   * connected (OAuth), the token is viewer-authenticated so Twitch Turbo /
+   * Prime removes preroll ads. Falls back to anonymous playback otherwise.
+   */
+  async getPlaybackToken(channelLogin: string): Promise<{
+    auth?: string;
+    sig?: string;
+    expiresAt?: string;
+    anonymous: boolean;
+  }> {
+    const token = await this.getAccessToken();
+    if (!token) return { anonymous: true };
+
+    try {
+      const { clientId } = this.getTwitchClientConfig();
+      const headers = { 'Client-Id': clientId, Authorization: `Bearer ${token}` };
+
+      const userRes = await fetch(
+        `https://api.twitch.tv/helix/users?login=${encodeURIComponent(channelLogin)}`,
+        { headers, signal: AbortSignal.timeout(10000) },
+      );
+      if (!userRes.ok) {
+        logger.error('[Twitch] helix users failed', { status: userRes.status });
+        return { anonymous: true };
+      }
+      const users = await userRes.json();
+      const userId = users?.data?.[0]?.id;
+      if (!userId) return { anonymous: true };
+
+      const tokRes = await fetch(
+        `https://api.twitch.tv/helix/streams/playback/token?user_id=${userId}`,
+        { headers, signal: AbortSignal.timeout(10000) },
+      );
+      if (!tokRes.ok) {
+        logger.error('[Twitch] playback token failed', { status: tokRes.status });
+        return { anonymous: true };
+      }
+      const tok = await tokRes.json();
+      const item = tok?.data?.[0];
+      if (!item?.value) return { anonymous: true };
+
+      return {
+        auth: item.value,
+        sig: item.signature,
+        expiresAt: item.expires_at,
+        anonymous: false,
+      };
+    } catch (e) {
+      logger.error('[Twitch] getPlaybackToken error', e);
+      return { anonymous: true };
+    }
   }
   async getFollows(): Promise<any[]> {
     return this.getAllChannels();
