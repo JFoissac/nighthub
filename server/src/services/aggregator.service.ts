@@ -7,6 +7,8 @@ import type { YoutubeService } from './youtube.service';
 import type { TwitchService } from './twitch.service';
 import type { TrumpService } from './trump.service';
 import type { MarketService } from './market.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export type AggregatorWeatherService = Pick<WeatherService, 'getWeeklyForecast'>;
 export type AggregatorNewsService = Pick<NewsService, 'fetchAiNews' | 'getCachedNews'>;
@@ -37,9 +39,66 @@ export class AggregatorService {
   private dashboardRebuildInFlight: Promise<any> | null = null;
 
   static readonly DASHBOARD_CACHE_TTL_MS = 30_000;
-  static readonly SOURCE_TIMEOUT_MS = 5_000;
+  static readonly SOURCE_TIMEOUT_MS = 3_000;
+  /** Âge max des données en base pour considérer un boot « frais » (skip refresh initial). */
+  static readonly BOOT_FRESH_MAX_AGE_MS = 10 * 60_000;
+  /** Fichier du snapshot dashboard persistant (même pattern que le snapshot trump). */
+  static readonly SNAPSHOT_FILE = path.join(process.cwd(), 'data', 'dashboard-snapshot.json');
 
-  constructor(private readonly deps: AggregatorServiceDeps) {}
+  constructor(private readonly deps: AggregatorServiceDeps) {
+    this.loadPersistedSnapshot();
+  }
+
+  /** Charge le snapshot dashboard persistant au démarrage (rendu <100ms à froid total). */
+  private loadPersistedSnapshot(): void {
+    if (process.env.NODE_ENV === 'test') return; // jamais de snapshot dans les tests
+    try {
+      if (!fs.existsSync(AggregatorService.SNAPSHOT_FILE)) return;
+      const raw = fs.readFileSync(AggregatorService.SNAPSHOT_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.data && typeof parsed.fetchedAt === 'number') {
+        this.dashboardCache = { data: parsed.data, fetchedAt: parsed.fetchedAt };
+        logger.info('Dashboard snapshot loaded from disk', { ageMin: Math.round((Date.now() - parsed.fetchedAt) / 60000) });
+      }
+    } catch (err) {
+      logger.warn('Failed to load dashboard snapshot', { error: (err as Error).message });
+    }
+  }
+
+  /** Persiste le snapshot dashboard après un rebuild réussi. */
+  private persistSnapshot(data: any): void {
+    if (process.env.NODE_ENV === 'test') return; // jamais d'écriture disque dans les tests
+    try {
+      const dir = path.dirname(AggregatorService.SNAPSHOT_FILE);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(AggregatorService.SNAPSHOT_FILE, JSON.stringify({ data, fetchedAt: Date.now() }));
+    } catch (err) {
+      logger.warn('Failed to persist dashboard snapshot', { error: (err as Error).message });
+    }
+  }
+
+  /**
+   * Vrai si les données en base sont suffisamment fraîches pour skipper le
+   * refresh initial au boot (P0 : évite 13s→3min de crawl à chaque démarrage).
+   */
+  async isDataFresh(maxAgeMs: number = AggregatorService.BOOT_FRESH_MAX_AGE_MS): Promise<boolean> {
+    try {
+      const { prisma } = await import('../db/prisma.client');
+      const since = new Date(Date.now() - maxAgeMs);
+      const [videos, news, tweets, streams] = await Promise.all([
+        prisma.youtubeVideo.count({ where: { fetchedAt: { gte: since } } }),
+        prisma.aiNewsItem.count({ where: { fetchedAt: { gte: since } } }),
+        prisma.tweet.count({ where: { fetchedAt: { gte: since } } }),
+        prisma.twitchStream.count({ where: { fetchedAt: { gte: since } } }),
+      ]);
+      // Au moins 3 sources sur 4 fraîches → on considère le boot frais.
+      const fresh = [videos, news, tweets, streams].filter((n) => n > 0).length;
+      return fresh >= 3;
+    } catch (err) {
+      logger.warn('isDataFresh check failed', { error: (err as Error).message });
+      return false;
+    }
+  }
 
   private static withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     return Promise.race([
@@ -82,8 +141,8 @@ export class AggregatorService {
 
   async refreshAll(): Promise<void> {
     try {
-      // Invalidate the dashboard snapshot so the next GET rebuilds with fresh data.
-      this.invalidateDashboardCache();
+      // P0 : NE PAS invalider le snapshot au début — le dashboard continue de
+      // servir l'ancien snapshot (stale) pendant le refresh au lieu de bloquer.
       const tasks = [
         { name: 'weather', promise: this.deps.weatherService.getWeeklyForecast('Caen') },
         { name: 'news', promise: this.deps.newsService.fetchAiNews() },
@@ -116,6 +175,11 @@ export class AggregatorService {
       }
 
       logger.info('All data refreshed successfully');
+      // P0-2 : une fois le refresh réussi, invalider puis rebuild immédiatement
+      // pour que le dashboard serve les données fraîches sans attendre le TTL.
+      this.invalidateDashboardCache();
+      await this.getDashboardData().catch((e: unknown) =>
+        logger.warn('Dashboard rebuild after refresh failed', { error: (e as Error).message }));
     } catch (error) {
       logger.error('Error refreshing all data', error);
     }
@@ -218,8 +282,16 @@ export class AggregatorService {
     }
 
     // No snapshot yet (first load): wait for the rebuild, bounded by per-source
-    // timeouts so it can never stall the response for long.
-    return this.rebuildDashboard(onProgress);
+    // timeouts so it can never stall the response for long. P1 : si un rebuild
+    // est déjà en cours (pre-warm au boot), on attend celui-là au lieu d'en
+    // lancer un deuxième (contention évitée).
+    if (this.dashboardRebuildInFlight) {
+      return this.dashboardRebuildInFlight;
+    }
+    this.dashboardRebuildInFlight = this.rebuildDashboard(onProgress).finally(() => {
+      this.dashboardRebuildInFlight = null;
+    });
+    return this.dashboardRebuildInFlight;
   }
 
   private async rebuildDashboard(onProgress?: (step: string) => void): Promise<any> {
@@ -289,6 +361,8 @@ export class AggregatorService {
       };
 
       this.dashboardCache = { data, fetchedAt: Date.now() };
+      // P0-3 : persister le snapshot pour un rendu <100ms au prochain boot à froid.
+      this.persistSnapshot(data);
       return data;
     } catch (error) {
       logger.error('Error getting dashboard data', error);

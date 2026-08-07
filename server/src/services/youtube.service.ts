@@ -855,8 +855,18 @@ export class YoutubeService {
       where: { fetchedAt: { gte: freshSince } },
     });
 
-    if (freshVideos > 0) {
+    if (freshVideos >= 20) {
       logger.info('[YouTube] Cache already fresh, skipping pre-warm', { freshVideos });
+      return;
+    }
+
+    // P2 : gate strict — si le dernier fetch est récent (<1h), skip même avec
+    // peu de vidéos fraîches (le cron 5 min gère le rafraîchissement).
+    const latest = await prisma.youtubeVideo.findFirst({ orderBy: { fetchedAt: 'desc' } });
+    if (latest && latest.fetchedAt && Date.now() - latest.fetchedAt.getTime() < 60 * 60 * 1000) {
+      logger.info('[YouTube] Latest fetch <1h old, skipping pre-warm', {
+        lastFetchAt: latest.fetchedAt.toISOString(),
+      });
       return;
     }
 
@@ -872,6 +882,20 @@ export class YoutubeService {
    * Called by refresh jobs, cron, and pre-warm. NOT called by getDashboardData.
    */
   async fetchAndCacheLatestVideos(): Promise<void> {
+    // P1 : garde interne — si un crawl est déjà en cours (refreshAll + cron ou
+    // triggerBackgroundRefresh), on attend celui-là au lieu d'en lancer un 2e
+    // (mesuré : 2 crawls YouTube complets concurrents au boot).
+    if (this.fetchInFlight) {
+      await this.fetchInFlight;
+      return;
+    }
+    this.fetchInFlight = this.doFetchAndCacheLatestVideos().finally(() => {
+      this.fetchInFlight = null;
+    });
+    await this.fetchInFlight;
+  }
+
+  private async doFetchAndCacheLatestVideos(): Promise<void> {
     const deadlineAt = Date.now() + YoutubeService.FETCH_TIMEOUT_MS;
     const handles = await this.getChannelHandles();
     const sources: ChannelFetchSource[] = [];

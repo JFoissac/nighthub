@@ -108,7 +108,11 @@ async function startServer() {
       });
 
       // --- Background tasks (never block boot or the event loop) ---
-      youtubeService.cleanOrphanChannelIds().catch((e: unknown) => logger.error('Clean orphan channel IDs failed', e));
+      // P2 : cleanOrphanChannelIds résout ~115 handles (~15s) — le différer à
+      // t+60s pour ne pas concurrencer le premier rebuild du dashboard.
+      setTimeout(() => {
+        youtubeService.cleanOrphanChannelIds().catch((e: unknown) => logger.error('Clean orphan channel IDs failed', e));
+      }, 60_000);
 
       // Fire-and-forget cache warm-up (skips itself when the DB cache is fresh)
       youtubeService.preWarmCache().catch((e: unknown) => logger.warn('Pre-warm failed', { error: e }));
@@ -118,12 +122,24 @@ async function startServer() {
       // periodic yields — never freezes the event loop.
       trumpTrainingService.start();
 
-      aggregatorService.refreshAll().catch((e: unknown) => logger.error('Aggregator initial data fetch failed', e));
-
-      // Warm the dashboard snapshot in the background so the first page load
-      // is served instantly from cache (the Angular dev server takes ~12s to
-      // build anyway — the snapshot is ready by the time the browser connects).
+      // P0-2 : pré-warm du dashboard AVANT le refresh — le premier GET du
+      // navigateur est servi quasi instantanément (snapshot, même stale),
+      // puis le refresh rafraîchit en arrière-plan sans bloquer le rendu.
       aggregatorService.getDashboardData().catch((e: unknown) => logger.warn('Dashboard pre-warm failed', { error: e }));
+
+      // P0-1 : gate de fraîcheur — si les données en base datent de moins de
+      // 10 min (boot après un arrêt court, cron déjà passé), on SKIP le
+      // refresh initial (13s→3min de crawl YouTube + 26-30s de fetchs réseau).
+      aggregatorService.isDataFresh().then((fresh) => {
+        if (fresh) {
+          logger.info('Data is fresh (<10min) — skipping initial refreshAll (cron will handle)');
+          return;
+        }
+        aggregatorService.refreshAll().catch((e: unknown) => logger.error('Aggregator initial data fetch failed', e));
+      }).catch((e: unknown) => {
+        logger.warn('Freshness gate failed, falling back to refreshAll', { error: (e as Error).message });
+        aggregatorService.refreshAll().catch((err: unknown) => logger.error('Aggregator initial data fetch failed', err));
+      });
 
       aggregatorService.start();
       logger.info('Aggregator cron jobs started');

@@ -37,7 +37,27 @@ function getWeatherDescription(code: number): string {
 }
 
 export class WeatherService {
+  private static readonly CACHE_TTL_MS = 60 * 60 * 1000; // 1h
+  private cache: { data: any; fetchedAt: number } | null = null;
+  private fetchInFlight: Promise<any> | null = null;
+
   async getWeeklyForecast(city: string = 'Caen'): Promise<any> {
+    // P1 : cache-first — un cache <1h est servi sans aucun appel réseau
+    // (mesuré : 2 appels open-meteo systématiques à chaque appel avant).
+    if (this.cache && Date.now() - this.cache.fetchedAt < WeatherService.CACHE_TTL_MS) {
+      return this.cache.data;
+    }
+    // Dédup des appels concurrents (refreshAll + rebuild dashboard au boot).
+    if (this.fetchInFlight) {
+      return this.fetchInFlight;
+    }
+    this.fetchInFlight = this.fetchWeeklyForecast(city).finally(() => {
+      this.fetchInFlight = null;
+    });
+    return this.fetchInFlight;
+  }
+
+  private async fetchWeeklyForecast(city: string = 'Caen'): Promise<any> {
     try {
       // 1. Geocode city to lat/lon
       const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=fr&format=json`;
@@ -102,7 +122,9 @@ export class WeatherService {
       }
 
       await this.cacheWeeklyForecast(days);
-      return { city: name, days, source: 'live' };
+      const result = { city: name, days, source: 'live' };
+      this.cache = { data: result, fetchedAt: Date.now() };
+      return result;
     } catch (error) {
       logger.error('Weather service error', error);
       return this.getCachedOrError(city, 'Open-Meteo service unavailable');
