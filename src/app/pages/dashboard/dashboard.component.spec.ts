@@ -99,6 +99,8 @@ describe('DashboardComponent', () => {
 
   beforeEach(async () => {
     mockApiService = {
+      getMarketSentiment: jest.fn().mockReturnValue(of(null)),
+      getMarketNews: jest.fn().mockReturnValue(of([])),
       getDashboardStream: jest.fn().mockReturnValue(of({
         videos: [],
         streams: [],

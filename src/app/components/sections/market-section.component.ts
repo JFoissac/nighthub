@@ -136,7 +136,7 @@ export class MarketSectionComponent implements OnInit, OnDestroy {
   }
 
   /** Index du point le plus proche de la souris (tooltip prix au survol). */
-  hoverIndex = -1;
+  readonly hoverIndex = signal(-1);
 
   onGraphHover(event: MouseEvent, ticker: MarketTicker) {
     const svg = (event.currentTarget as SVGSVGElement);
@@ -145,11 +145,11 @@ export class MarketSectionComponent implements OnInit, OnDestroy {
     const data = ticker.sparkline7d || [];
     if (!data.length) return;
     const idx = Math.round(xRatio * (data.length - 1));
-    this.hoverIndex = Math.max(0, Math.min(data.length - 1, idx));
+    this.hoverIndex.set(Math.max(0, Math.min(data.length - 1, idx)));
   }
 
   onGraphLeave() {
-    this.hoverIndex = -1;
+    this.hoverIndex.set(-1);
   }
 
   formatPrice(price: number): string {

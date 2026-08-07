@@ -152,6 +152,21 @@ h1, h2, h3, h4, h5, h6 { font-family: 'Space Grotesk', sans-serif; letter-spacin
   pointer-events: none;
   z-index: 3;
 }
+/* Prix fixes aux extrémités de la courbe */
+.spark-edge-price {
+  position: absolute;
+  transform: translateY(-50%);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: #94a3b8;
+  background: rgba(10, 10, 14, 0.85);
+  padding: 0 3px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 2;
+}
+.spark-edge-price.left { left: 2px; }
+.spark-edge-price.right { right: 2px; }
 .market-expand {
   animation: fadeInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
