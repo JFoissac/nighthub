@@ -158,17 +158,11 @@
                     @if (ticker.sparkline7d?.length) {
                       <div class="mb-2">
                         <div class="relative">
-                          <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="88" [showEdges]="true"></app-sparkline>
-                        </div>
-                        <div class="flex justify-between font-mono text-[9px] text-text-muted/70 mt-0.5">
-                          <span>{{ sparklineRange(ticker.sparkline7d || []) }}</span>
-                          <span>7D</span>
+                          <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="110" [showEdges]="true"></app-sparkline>
                         </div>
                       </div>
                     }
-                    <div class="grid grid-cols-3 gap-x-4 gap-y-1 text-[9px] font-label-caps">
-                      <div class="text-text-muted">Price</div>
-                      <div class="col-span-2 text-text-primary text-right font-mono">${{ formatPrice(ticker.price) }}</div>
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] font-label-caps">
                       <div class="text-text-muted">24h Change</div>
                       <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
                         {{ ticker.change24h >= 0 ? '+' : '' }}${{ Math.abs(ticker.change24h).toFixed(ticker.price < 10 ? 4 : 2) }} ({{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%)
@@ -222,16 +216,10 @@
                     <div class="px-4 py-2 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80">
                       @if (ticker.sparkline7d?.length) {
                         <div class="mb-3 relative">
-                          <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="88" [showEdges]="true"></app-sparkline>
-                          <div class="flex justify-between font-mono text-[9px] text-text-muted/70 mt-0.5">
-                            <span>{{ sparklineRange(ticker.sparkline7d || []) }}</span>
-                            <span>7D</span>
-                          </div>
+                          <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="110" [showEdges]="true"></app-sparkline>
                         </div>
                       }
-                      <div class="grid grid-cols-3 gap-x-4 gap-y-1 text-[9px] font-label-caps">
-                        <div class="text-text-muted">Price</div>
-                        <div class="col-span-2 text-text-primary text-right font-mono">${{ formatStockPrice(ticker.price) }}</div>
+                      <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] font-label-caps">
                         <div class="text-text-muted">24h Change</div>
                         <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
                           {{ ticker.change24h >= 0 ? '+' : '' }}${{ Math.abs(ticker.change24h).toFixed(2) }} ({{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%)
