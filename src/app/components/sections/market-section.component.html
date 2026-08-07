@@ -32,7 +32,7 @@
             <div class="px-3 pt-2 pb-1"><span class="font-label-caps text-[9px] text-text-muted">CRYPTO</span></div>
             <div class="grid grid-cols-2 gap-2 px-2 pb-2">
               @for (ticker of store.crypto(); track ticker.symbol) {
-                <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)">
+                <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)" role="button" tabindex="0" (keydown.enter)="toggleExpand(ticker)" (keydown.space)="toggleExpand(ticker); $event.preventDefault()">
                   <div class="flex items-center justify-between mb-1.5">
                     <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
                     <span class="font-label-caps text-[10px] text-text-muted">{{ ticker.name }}</span>
@@ -75,7 +75,7 @@
               <div class="px-3 pt-3 pb-1 border-t border-[#1E1E2E]"><span class="font-label-caps text-[9px] text-text-muted">{{ group.label }}</span></div>
               <div class="grid grid-cols-2 gap-2 px-2 pb-2">
                 @for (ticker of group.tickers; track ticker.symbol) {
-                  <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)">
+                  <div class="bg-[#131318]/40 rounded p-3 border border-[#1E1E2E]/50 hover:border-[#1E1E2E] transition-colors cursor-pointer" (click)="toggleExpand(ticker)" role="button" tabindex="0" (keydown.enter)="toggleExpand(ticker)" (keydown.space)="toggleExpand(ticker); $event.preventDefault()">
                     <div class="flex items-center justify-between mb-1.5">
                       <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
                       <span class="font-label-caps text-[10px] text-text-muted truncate max-w-[60%]">{{ ticker.name }}</span>
@@ -115,7 +115,7 @@
               <span class="w-14 text-right">7D</span>
             </div>
             @for (ticker of store.crypto(); track ticker.symbol) {
-              <div (click)="toggleExpand(ticker)">
+              <div (click)="toggleExpand(ticker)" role="button" tabindex="0" (keydown.enter)="toggleExpand(ticker)" (keydown.space)="toggleExpand(ticker); $event.preventDefault()">
                 <div class="px-4 py-2 border-b border-[#1E1E2E]/50 hover:bg-[#131318]/30 transition-colors flex items-center cursor-pointer">
                   <div class="flex-1 min-w-0">
                     <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>
@@ -185,7 +185,7 @@
                 <span class="w-14 text-right">7D</span>
               </div>
               @for (ticker of group.tickers; track ticker.symbol) {
-                <div (click)="toggleExpand(ticker)">
+                <div (click)="toggleExpand(ticker)" role="button" tabindex="0" (keydown.enter)="toggleExpand(ticker)" (keydown.space)="toggleExpand(ticker); $event.preventDefault()">
                   <div class="px-4 py-2 border-b border-[#1E1E2E]/50 hover:bg-[#131318]/30 transition-colors flex items-center cursor-pointer">
                     <div class="flex-1 min-w-0">
                       <span class="font-mono text-[11px] text-text-primary font-bold tracking-wide">{{ ticker.symbol }}</span>

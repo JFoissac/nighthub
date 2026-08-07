@@ -110,7 +110,7 @@ function calculateRelevanceScore(
           >{{ sortMode() === 'date' ? 'DATE' : 'PERTINENCE' }}</span>
           <button
             (click)="toggleSort()"
-            class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors"
+            class="w-9 h-9 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors"
             aria-label="Changer le mode de tri"
           >
             @if (sortMode() === 'date') {
@@ -125,7 +125,7 @@ function calculateRelevanceScore(
           </button>
           <button
             (click)="showRssDetect.set(true)"
-            class="w-5 h-5 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors"
+            class="w-9 h-9 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors"
             aria-label="Ajouter un flux RSS"
           >
             <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
