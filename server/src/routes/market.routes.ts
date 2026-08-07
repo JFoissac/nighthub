@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { marketService } from '../services/backend.runtime';
+import { marketService, marketIntelService } from '../services/backend.runtime';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -14,6 +14,26 @@ async function getMarketLive(_req: Request, res: Response) {
   }
 }
 
+async function getFearGreed(_req: Request, res: Response) {
+  try {
+    res.json(await marketIntelService.getFearGreed());
+  } catch (err) {
+    logger.error('[Market] Fear&Greed route error', err);
+    res.status(500).json({ error: 'Failed to fetch fear & greed' });
+  }
+}
+
+async function getMarketSentiment(_req: Request, res: Response) {
+  try {
+    res.json(await marketIntelService.getMarketSentiment());
+  } catch (err) {
+    logger.error('[Market] Sentiment route error', err);
+    res.status(500).json({ error: 'Failed to fetch market sentiment' });
+  }
+}
+
 router.get('/live', getMarketLive);
+router.get('/fear-greed', getFearGreed);
+router.get('/sentiment', getMarketSentiment);
 
 export default router;

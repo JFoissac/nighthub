@@ -6,6 +6,7 @@ import { createTrumpService } from './trump.service';
 import { createTrumpNewsService } from './trump-news.service';
 import { trumpTrainingService as sharedTrumpTrainingService } from './trump.trainer';
 import { createMarketService } from './market.service';
+import { createMarketIntelService } from './market-intel.service';
 import { createAggregatorService } from './aggregator.service';
 
 export function createBackendServices() {
@@ -16,6 +17,7 @@ export function createBackendServices() {
   const trumpService = createTrumpService();
   const trumpNewsService = createTrumpNewsService();
   const marketService = createMarketService();
+  const marketIntelService = createMarketIntelService(marketService, trumpService, trumpNewsService);
   const aggregatorService = createAggregatorService({
     weatherService,
     newsService,
@@ -34,6 +36,7 @@ export function createBackendServices() {
     trumpNewsService,
     trumpTrainingService: sharedTrumpTrainingService,
     marketService,
+    marketIntelService,
     aggregatorService,
   };
 }
@@ -49,5 +52,6 @@ export const {
   trumpNewsService,
   trumpTrainingService,
   marketService,
+  marketIntelService,
   aggregatorService,
 } = backendServices;
