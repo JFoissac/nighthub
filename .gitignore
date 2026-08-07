@@ -67,3 +67,6 @@ server/.env
 !.env.dev
 !.env.test
 !.env.prod.example
+
+# Snapshots runtime (regeneres au boot)
+server/data/dashboard-snapshot.json
