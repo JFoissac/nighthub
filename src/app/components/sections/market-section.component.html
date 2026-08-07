@@ -154,9 +154,9 @@
                   </span>
                 </div>
                 @if (expanded()?.symbol === ticker.symbol) {
-                  <div class="px-4 py-2 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80 market-expand">
+                  <div class="px-4 py-1.5 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80 market-expand">
                     @if (ticker.sparkline7d?.length) {
-                      <div class="mb-2">
+                      <div class="mb-1.5">
                         <div class="relative">
                           <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="110" [showEdges]="true"></app-sparkline>
                         </div>
@@ -164,18 +164,18 @@
                     }
                     <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] font-label-caps">
                       <div class="text-text-muted">24h Change</div>
-                      <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
+                      <div class="text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
                         {{ ticker.change24h >= 0 ? '+' : '' }}${{ Math.abs(ticker.change24h).toFixed(ticker.price < 10 ? 4 : 2) }} ({{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%)
                       </div>
                       @if (ticker.changePercent7d !== 0) {
                         <div class="text-text-muted">7d Change</div>
-                        <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change7d >= 0" [class.text-red-400]="ticker.change7d < 0">
+                        <div class="text-right font-mono" [class.text-green-400]="ticker.change7d >= 0" [class.text-red-400]="ticker.change7d < 0">
                           {{ ticker.change7d >= 0 ? '+' : '' }}${{ Math.abs(ticker.change7d).toFixed(ticker.price < 10 ? 4 : 2) }} ({{ ticker.changePercent7d >= 0 ? '+' : '' }}{{ ticker.changePercent7d.toFixed(2) }}%)
                         </div>
                       }
-                      @if (ticker.marketCap) {<div class="text-text-muted">Market Cap</div><div class="col-span-2 text-right text-text-primary font-mono">{{ formatCap(ticker.marketCap) }}</div>}
-                      @if (ticker.volume) {<div class="text-text-muted">Volume 24h</div><div class="col-span-2 text-right text-text-primary font-mono">{{ formatCap(ticker.volume) }}</div>}
-                      @if (ticker.high24h) {<div class="text-text-muted">High / Low 24h</div><div class="col-span-2 text-right text-text-primary font-mono">${{ formatPrice(ticker.high24h) }} / ${{ formatPrice(ticker.low24h || 0) }}</div>}
+                      @if (ticker.marketCap) {<div class="text-text-muted">Market Cap</div><div class="text-right text-text-primary font-mono">{{ formatCap(ticker.marketCap) }}</div>}
+                      @if (ticker.volume) {<div class="text-text-muted">Volume 24h</div><div class="text-right text-text-primary font-mono">{{ formatCap(ticker.volume) }}</div>}
+                      @if (ticker.high24h) {<div class="text-text-muted">High / Low 24h</div><div class="text-right text-text-primary font-mono">${{ formatPrice(ticker.high24h) }} / ${{ formatPrice(ticker.low24h || 0) }}</div>}
                     </div>
                   </div>
                 }
@@ -213,7 +213,7 @@
                     </span>
                   </div>
                   @if (expanded()?.symbol === ticker.symbol) {
-                    <div class="px-4 py-2 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80">
+                    <div class="px-4 py-1.5 bg-[#0a0a0e]/60 border-b border-[#1E1E2E]/80">
                       @if (ticker.sparkline7d?.length) {
                         <div class="mb-3 relative">
                           <app-sparkline [data]="ticker.sparkline7d || []" [positive]="ticker.changePercent7d >= 0" [height]="110" [showEdges]="true"></app-sparkline>
@@ -221,12 +221,12 @@
                       }
                       <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] font-label-caps">
                         <div class="text-text-muted">24h Change</div>
-                        <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
+                        <div class="text-right font-mono" [class.text-green-400]="ticker.change24h >= 0" [class.text-red-400]="ticker.change24h < 0">
                           {{ ticker.change24h >= 0 ? '+' : '' }}${{ Math.abs(ticker.change24h).toFixed(2) }} ({{ ticker.changePercent24h >= 0 ? '+' : '' }}{{ ticker.changePercent24h.toFixed(2) }}%)
                         </div>
                         @if (ticker.changePercent7d !== 0) {
                           <div class="text-text-muted">7d Change</div>
-                          <div class="col-span-2 text-right font-mono" [class.text-green-400]="ticker.change7d >= 0" [class.text-red-400]="ticker.change7d < 0">
+                          <div class="text-right font-mono" [class.text-green-400]="ticker.change7d >= 0" [class.text-red-400]="ticker.change7d < 0">
                             {{ ticker.change7d >= 0 ? '+' : '' }}${{ Math.abs(ticker.change7d).toFixed(2) }} ({{ ticker.changePercent7d >= 0 ? '+' : '' }}{{ ticker.changePercent7d.toFixed(2) }}%)
                           </div>
                         }
