@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, signal, inject, HostListener, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { switchMap } from 'rxjs';
 import { HeaderComponent } from '../../components/header/header.component';
 import { StreamPlayerPanelComponent } from '../../components/stream/stream-player-panel.component';
 import { StreamListPopupComponent } from '../../components/stream/stream-list-popup.component';
@@ -13,6 +14,7 @@ import { YoutubeSectionComponent } from '../../components/sections/youtube-secti
 import { StreamsSectionComponent } from '../../components/sections/streams-section.component';
 import { NewsSectionComponent } from '../../components/sections/news-section.component';
 import { TrumpSectionComponent } from '../../components/sections/trump-section.component';
+import { SkeletonComponent } from '../../components/skeleton/skeleton.component';
 import { ApiService, DashboardData } from '../../services/api.service';
 import { ToastService } from '../../services/toast.service';
 import { TwitchStream, YoutubeVideo } from '../../models';
@@ -43,6 +45,7 @@ import { MarketStore } from '../../stores/market.store';
     StreamsSectionComponent,
     NewsSectionComponent,
     TrumpSectionComponent,
+    SkeletonComponent,
   ],
   template: `
     <div class="min-h-screen bg-background">
@@ -64,20 +67,20 @@ import { MarketStore } from '../../stores/market.store';
       @if (showWeather()) {
         <app-weather-popup
           [forecast]="dashboardData()?.weather || null"
-          (close)="showWeather.set(false)"
+          (closed)="showWeather.set(false)"
         ></app-weather-popup>
       }
 
       @if (showOptions()) {
         <app-settings-options
-          (close)="showOptions.set(false)"
+          (closed)="showOptions.set(false)"
           (saved)="onSettingsSaved()"
         ></app-settings-options>
       }
 
       @if (showSources()) {
         <app-settings-sources
-          (close)="showSources.set(false)"
+          (closed)="showSources.set(false)"
           (saved)="onSettingsSaved()"
         ></app-settings-sources>
       }
@@ -85,7 +88,7 @@ import { MarketStore } from '../../stores/market.store';
       @if (selectedVideo()) {
         <app-video-player-popup
           [video]="selectedVideo()!"
-          (close)="selectedVideo.set(null)"
+          (closed)="selectedVideo.set(null)"
           (openPanel)="selectedVideo.set(null); panelVideo.set($event)"
         ></app-video-player-popup>
       }
@@ -93,14 +96,14 @@ import { MarketStore } from '../../stores/market.store';
       @if (panelVideo()) {
         <app-video-player-panel
           [video]="panelVideo()!"
-          (close)="panelVideo.set(null)"
+          (closed)="panelVideo.set(null)"
         ></app-video-player-panel>
       }
 
       @if (showStreamList()) {
         <app-stream-list-popup
           [streams]="streamsStore.streams()"
-          (close)="showStreamList.set(false)"
+          (closed)="showStreamList.set(false)"
           (selectStream)="showStreamList.set(false); onStreamSelect($event)"
         ></app-stream-list-popup>
       }
@@ -119,19 +122,31 @@ import { MarketStore } from '../../stores/market.store';
         </div>
 
         <div class="mt-8">
-          <app-streams-section
-            (selectStream)="onStreamSelect($event)"
-            (openStreamList)="showStreamList.set(true)"
-            (openSettings)="showSources.set(true)"
-          ></app-streams-section>
+          @defer (on viewport) {
+            <app-streams-section
+              (selectStream)="onStreamSelect($event)"
+              (openStreamList)="showStreamList.set(true)"
+              (openSettings)="showSources.set(true)"
+            ></app-streams-section>
+          } @placeholder {
+            <div class="min-h-[320px]"><app-skeleton variant="row" /></div>
+          }
         </div>
 
         <!-- Bottom Row: AI Blog (6-col) + Trump Watch (6-col) -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <app-news-section
-            (feedAdded)="onFeedAdded($event)"
-          ></app-news-section>
-          <app-trump-section></app-trump-section>
+          @defer (on viewport) {
+            <app-news-section
+              (feedAdded)="onFeedAdded($event)"
+            ></app-news-section>
+          } @placeholder {
+            <div class="min-h-[420px]"><app-skeleton variant="card" /></div>
+          }
+          @defer (on viewport) {
+            <app-trump-section></app-trump-section>
+          } @placeholder {
+            <div class="min-h-[420px]"><app-skeleton variant="post" /></div>
+          }
         </div>
         </div>
         </main>
@@ -139,7 +154,7 @@ import { MarketStore } from '../../stores/market.store';
         @if (selectedStream()) {
           <app-stream-player-panel
             [stream]="selectedStream()!"
-            (close)="closeSelectedStream()"
+            (closed)="closeSelectedStream()"
           ></app-stream-player-panel>
         }
       </div>
@@ -467,24 +482,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   onFeedAdded(feedUrl: string) {
-    this.apiService.getPreferences().subscribe({
-      next: (prefs) => {
+    this.apiService.getPreferences().pipe(
+      switchMap((prefs) => {
         const existing = (prefs.customRssFeeds || '').trim();
         const updated = existing ? `${existing}\n${feedUrl}` : feedUrl;
-        this.apiService.savePreferences({ customRssFeeds: updated }).subscribe({
-          next: () => {
-            this.apiService.refreshNews().subscribe({
-              next: () => {
-                this.apiService.getNews().subscribe({
-                  next: (news) => {
-                    this.newsStore.setItems(news || []);
-                    this.dashboardData.update((current) => current ? ({ ...current, news: news || [] }) : current);
-                  },
-                });
-              },
-            });
-          },
-        });
+        return this.apiService.savePreferences({ customRssFeeds: updated });
+      }),
+      switchMap(() => this.apiService.refreshNews()),
+      switchMap(() => this.apiService.getNews()),
+    ).subscribe({
+      next: (news) => {
+        this.newsStore.setItems(news || []);
+        this.dashboardData.update((current) => current ? ({ ...current, news: news || [] }) : current);
+      },
+      error: (err) => {
+        console.warn('Failed to add RSS feed:', err);
+        this.toastService.error("Impossible d'ajouter ce flux RSS.");
       },
     });
   }

@@ -1,5 +1,6 @@
 import { Component, inject, signal, computed, ChangeDetectionStrategy, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, LoaderCircle } from 'lucide-angular';
 import { TrumpNewsItem } from '../../models';
 import { TrumpStore } from '../../stores/trump.store';
 import { ApiService } from '../../services/api.service';
@@ -7,12 +8,14 @@ import { TrumpNewsService } from '../../services/trump-news.service';
 import { TrumpCardComponent } from '../trump/trump-card.component';
 import { TrumpNewsCardComponent } from '../trump/trump-news-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
+import { SkeletonComponent } from '../skeleton/skeleton.component';
+import { EmptyStateComponent } from '../empty-state/empty-state.component';
 
 @Component({
   selector: 'app-trump-section',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, TrumpCardComponent, TrumpNewsCardComponent, InfiniteScrollDirective],
+  imports: [CommonModule, LucideAngularModule, TrumpCardComponent, TrumpNewsCardComponent, InfiniteScrollDirective, SkeletonComponent, EmptyStateComponent],
   template: `
     <section class="neo-glass rounded overflow-hidden flex flex-col fade-in" style="animation-delay: 200ms">
       <div class="px-4 py-3 border-b border-[#1E1E2E] flex items-center justify-between bg-[#131318]/40 flex-shrink-0">
@@ -25,9 +28,7 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
         </div>
         <div class="flex items-center gap-2">
           @if (store.isLoading()) {
-            <svg class="w-3.5 h-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
-            </svg>
+            <lucide-icon [name]="LoaderCircle" size="14" class="animate-spin text-primary"></lucide-icon>
           }
           <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded border border-red-500/30 text-red-400">CRITICALITY</span>
         </div>
@@ -47,18 +48,7 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
           </div>
         }
         @if (store.isLoading() && !store.count()) {
-          <div class="space-y-3 p-4">
-            @for (placeholder of [1, 2, 3]; track placeholder) {
-              <div class="rounded-xl border border-[#1E1E2E] bg-[#131318]/40 p-4 animate-pulse space-y-3">
-                <div class="flex items-center justify-between">
-                  <div class="h-3 w-28 rounded bg-[#1E1E2E]/70"></div>
-                  <div class="h-5 w-16 rounded-full bg-[#1E1E2E]/40"></div>
-                </div>
-                <div class="h-3 w-11/12 rounded bg-[#1E1E2E]/60"></div>
-                <div class="h-3 w-4/5 rounded bg-[#1E1E2E]/50"></div>
-              </div>
-            }
-          </div>
+          <app-skeleton variant="post" />
         }
         @for (item of store.items(); track item.tweetId || item.id || $index) {
           <app-trump-card [item]="item"></app-trump-card>
@@ -71,17 +61,19 @@ import { InfiniteScrollDirective } from '../../directives/infinite-scroll.direct
         ></div>
         @if (store.isLoading()) {
           <div class="text-center py-2">
-            <span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING...</span>
+            <app-skeleton variant="text" />
           </div>
         }
         @if (!store.isLoading() && !store.count()) {
-          <p class="font-label-caps text-[10px] text-text-muted p-4">NO DATA</p>
+          <app-empty-state title="NO DATA" layout="start"></app-empty-state>
         }
       </div>
     </section>
   `,
 })
 export class TrumpSectionComponent implements OnInit {
+  readonly LoaderCircle = LoaderCircle;
+
   readonly store = inject(TrumpStore);
   private readonly api = inject(ApiService);
   private readonly trumpNews = inject(TrumpNewsService);

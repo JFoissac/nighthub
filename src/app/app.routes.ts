@@ -1,14 +1,15 @@
 import { Routes } from '@angular/router';
-import { DashboardComponent } from './pages/dashboard/dashboard.component';
-import { SettingsComponent } from './pages/settings/settings.component';
 
 export const appRoutes: Routes = [
   {
     path: '',
-    component: DashboardComponent,
+    loadComponent: () =>
+      import('./pages/dashboard/dashboard.component').then((m) => m.DashboardComponent),
   },
   {
     path: 'settings',
-    component: SettingsComponent,
+    loadComponent: () =>
+      import('./pages/settings/settings.component').then((m) => m.SettingsComponent),
   },
+  { path: '**', redirectTo: '' },
 ];

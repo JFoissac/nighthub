@@ -1,16 +1,17 @@
 import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, X } from 'lucide-angular';
 import { TwitchStream } from '../../models';
 
 @Component({
   selector: 'app-stream-list-popup',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <!-- Backdrop -->
-      <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" (click)="close.emit()"></div>
+      <div role="presentation" class="absolute inset-0 bg-black/70 backdrop-blur-sm" (click)="closed.emit()"></div>
 
       <!-- Modal -->
       <div class="relative z-10 w-full max-w-lg mx-4 neo-glass rounded-lg overflow-hidden max-h-[80vh] flex flex-col" role="dialog" aria-labelledby="streams-modal-title">
@@ -21,8 +22,8 @@ import { TwitchStream } from '../../models';
             <span id="streams-modal-title" class="font-label-caps text-[11px] tracking-widest text-on-surface-variant">LIVE STREAMS</span>
             <span class="font-label-caps text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">{{ streams().length }}</span>
           </div>
-          <button (click)="close.emit()" class="w-6 h-6 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors" aria-label="Fermer">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <button (click)="closed.emit()" class="w-6 h-6 flex items-center justify-center rounded hover:bg-[#1E1E2E] text-text-muted hover:text-primary transition-colors" aria-label="Fermer">
+            <lucide-icon [name]="X" size="16"></lucide-icon>
           </button>
         </div>
 
@@ -60,7 +61,9 @@ import { TwitchStream } from '../../models';
   `,
 })
 export class StreamListPopupComponent {
+  readonly X = X;
+
   streams = input.required<TwitchStream[]>();
-  close = output<void>();
+  closed = output<void>();
   selectStream = output<TwitchStream>();
 }

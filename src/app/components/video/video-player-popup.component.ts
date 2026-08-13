@@ -1,21 +1,21 @@
 import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { LucideAngularModule, PanelRight, X } from 'lucide-angular';
 import { YoutubeVideo } from '../../models';
 
 @Component({
   selector: 'app-video-player-popup',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 flex items-center justify-center p-4"
-         (click)="close.emit()">
+    <div role="presentation" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 flex items-center justify-center p-4"
+         (click)="onBackdropClick($event)">
 
       <!-- Modal -->
-      <div class="w-full max-w-3xl bg-[#0e0e13] border border-[#1E1E2E] rounded overflow-hidden shadow-2xl flex flex-col"
-           (click)="$event.stopPropagation()">
+      <div class="w-full max-w-3xl bg-[#0e0e13] border border-[#1E1E2E] rounded overflow-hidden shadow-2xl flex flex-col">
 
         <!-- Header -->
         <div class="flex items-start gap-3 px-4 py-3 border-b border-[#1E1E2E] bg-[#131318]/60 flex-shrink-0">
@@ -36,9 +36,7 @@ import { YoutubeVideo } from '../../models';
             <button (click)="openPanel.emit(video())"
                     class="flex items-center gap-1.5 px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded font-label-caps text-[9px] transition-colors border border-primary/20"
                     title="Ouvrir en side panel">
-              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>
-              </svg>
+              <lucide-icon [name]="PanelRight" size="12"></lucide-icon>
               SIDE PANEL
             </button>
             <!-- Open on YouTube -->
@@ -50,9 +48,9 @@ import { YoutubeVideo } from '../../models';
               YOUTUBE
             </a>
             <!-- Close -->
-            <button (click)="close.emit()"
+            <button (click)="closed.emit()"
                     class="p-1.5 text-text-muted hover:text-text-primary transition-colors rounded hover:bg-[#1E1E2E]">
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              <lucide-icon [name]="X" size="16"></lucide-icon>
             </button>
           </div>
         </div>
@@ -70,11 +68,20 @@ import { YoutubeVideo } from '../../models';
   `,
 })
 export class VideoPlayerPopupComponent {
+  readonly PanelRight = PanelRight;
+  readonly X = X;
+
   video = input.required<YoutubeVideo>();
-  close = output<void>();
+  closed = output<void>();
   openPanel = output<YoutubeVideo>();
 
   private sanitizer = inject(DomSanitizer);
+
+  onBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      this.closed.emit();
+    }
+  }
 
   embedUrl(): SafeResourceUrl {
     const id = this.getVideoId();

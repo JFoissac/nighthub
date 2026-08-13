@@ -1,12 +1,13 @@
 import { Component, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, X } from 'lucide-angular';
 import { ToastService, Toast } from '../../services/toast.service';
 
 @Component({
   selector: 'app-toast-container',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none">
       @for (toast of toastService.toasts$(); track toast.id) {
@@ -22,9 +23,7 @@ import { ToastService, Toast } from '../../services/toast.service';
             class="text-white/60 hover:text-white transition-colors"
             aria-label="Dismiss"
           >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
+            <lucide-icon [name]="X" size="16"></lucide-icon>
           </button>
         </div>
       }
@@ -41,6 +40,7 @@ import { ToastService, Toast } from '../../services/toast.service';
   `]
 })
 export class ToastContainerComponent {
+  readonly X = X;
   readonly toastService = inject(ToastService);
 
   toastClass(type: string): string {

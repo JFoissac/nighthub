@@ -26,9 +26,7 @@
         "styles": [
           "src/styles.css"
         ],
-        "polyfills": [
-          "zone.js"
-        ]
+        "polyfills": []
       },
       "configurations": {
         "production": {
@@ -49,7 +47,13 @@
         "development": {
           "optimization": false,
           "extractLicenses": false,
-          "sourceMap": true
+          "sourceMap": true,
+          "fileReplacements": [
+            {
+              "replace": "src/environments/environment.ts",
+              "with": "src/environments/environment.development.ts"
+            }
+          ]
         }
       },
       "defaultConfiguration": "production"
@@ -67,7 +71,8 @@
       },
       "defaultConfiguration": "development",
       "options": {
-        "port": 4201
+        "port": 4201,
+        "proxyConfig": "proxy.conf.json"
       }
     },
     "lint": {

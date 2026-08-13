@@ -1,14 +1,17 @@
 import { Component, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, LoaderCircle } from 'lucide-angular';
 import { VideoCardComponent } from '../video/video-card.component';
 import { InfiniteScrollDirective } from '../../directives/infinite-scroll.directive';
 import { VideosStore } from '../../stores/videos.store';
+import { SkeletonComponent } from '../skeleton/skeleton.component';
+import { EmptyStateComponent } from '../empty-state/empty-state.component';
 
 @Component({
   selector: 'app-youtube-section',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, VideoCardComponent, InfiniteScrollDirective],
+  imports: [CommonModule, LucideAngularModule, VideoCardComponent, InfiniteScrollDirective, SkeletonComponent, EmptyStateComponent],
   template: `
     <section role="region" aria-label="YouTube — Abonnements" class="lg:col-span-7 neo-glass rounded overflow-hidden flex flex-col fade-in h-[424px]" style="animation-delay: 50ms">
       <div class="px-4 py-3 border-b border-[#1E1E2E] flex items-center justify-between bg-[#131318]/40 flex-shrink-0">
@@ -18,28 +21,15 @@ import { VideosStore } from '../../stores/videos.store';
           <span class="font-label-caps text-[9px] text-text-muted">({{ store.count() }})</span>
         </div>
         @if (store.isLoading()) {
-          <svg class="w-3.5 h-3.5 animate-spin text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
-          </svg>
+          <lucide-icon [name]="LoaderCircle" size="14" class="animate-spin text-primary"></lucide-icon>
         }
       </div>
       <div class="flex-1 min-h-0 p-4 space-y-4 overflow-y-auto">
         @if (store.isLoading() && !store.count()) {
-          <div class="space-y-3">
-            @for (placeholder of [1, 2, 3]; track placeholder) {
-              <div class="rounded-xl border border-[#1E1E2E] bg-[#131318]/50 p-3 flex gap-3 animate-pulse">
-                <div class="w-32 h-[72px] rounded-lg bg-[#1E1E2E]/70 shrink-0"></div>
-                <div class="flex-1 space-y-2 pt-1">
-                  <div class="h-3 w-5/6 rounded bg-[#1E1E2E]/70"></div>
-                  <div class="h-3 w-2/3 rounded bg-[#1E1E2E]/50"></div>
-                  <div class="h-2 w-24 rounded bg-[#1E1E2E]/40"></div>
-                </div>
-              </div>
-            }
-          </div>
+          <app-skeleton variant="thumbnail" />
         }
         @for (video of store.videos(); track video.id || $index) {
-          <app-video-card [video]="video" (select)="selectVideo.emit($event)"></app-video-card>
+          <app-video-card [video]="video" (selected)="selectVideo.emit($event)"></app-video-card>
         }
         <div
           appInfiniteScroll
@@ -49,20 +39,23 @@ import { VideosStore } from '../../stores/videos.store';
         ></div>
         @if (store.isLoading()) {
           <div class="text-center py-2">
-            <span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING...</span>
+            <app-skeleton variant="text" />
           </div>
         }
         @if (!store.isLoading() && !store.count()) {
-          <div class="text-center py-6">
-            <p class="font-label-caps text-[10px] text-text-muted mb-2">NO CHANNELS CONFIGURED</p>
-            <button (click)="openSettings.emit()" class="font-label-caps text-[10px] text-primary underline">CONFIGURE</button>
-          </div>
+          <app-empty-state
+            title="NO CHANNELS CONFIGURED"
+            actionLabel="CONFIGURE"
+            (action)="openSettings.emit()"
+          ></app-empty-state>
         }
       </div>
     </section>
   `,
 })
 export class YoutubeSectionComponent {
+  readonly LoaderCircle = LoaderCircle;
+
   readonly store = inject(VideosStore);
 
   selectVideo = output<any>();

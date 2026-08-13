@@ -83,7 +83,7 @@ describe('VideoCardComponent', () => {
     fixture.detectChanges();
 
     const selected: typeof mockVideo[] = [];
-    component.select.subscribe((v) => selected.push(v));
+    component.selected.subscribe((v) => selected.push(v));
 
     const card = fixture.nativeElement.querySelector('.cursor-pointer');
     card.click();

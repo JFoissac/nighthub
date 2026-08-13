@@ -1,20 +1,20 @@
 import { Component, HostListener, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, ExternalLink, X } from 'lucide-angular';
 import { ExtractedNewsArticle } from '../../services/api.service';
 
 @Component({
   selector: 'app-news-article-reader-popup',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
-    <div class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-         (click)="close.emit()">
+    <div role="presentation" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+         (click)="onBackdropClick($event)">
       <div
            role="dialog"
            aria-modal="true"
-           class="w-full max-w-4xl max-h-[90vh] bg-[#0e0e13] border border-[#1E1E2E] rounded shadow-2xl flex flex-col"
-           (click)="$event.stopPropagation()">
+           class="w-full max-w-4xl max-h-[90vh] bg-[#0e0e13] border border-[#1E1E2E] rounded shadow-2xl flex flex-col">
         <div class="px-4 py-3 border-b border-[#1E1E2E] bg-[#131318]/60 flex items-start justify-between gap-3">
           <div class="min-w-0">
             <h2 class="text-[14px] font-medium text-text-primary leading-snug">{{ article().title }}</h2>
@@ -28,19 +28,15 @@ import { ExtractedNewsArticle } from '../../services/api.service';
               class="p-1.5 text-text-muted hover:text-text-primary transition-colors rounded hover:bg-[#1E1E2E]"
               aria-label="Open original article"
               (click)="$event.stopPropagation()">
-              <svg aria-hidden="true" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
-              </svg>
+              <lucide-icon aria-hidden="true" [name]="ExternalLink" size="16"></lucide-icon>
             </a>
             <button
               type="button"
-              (click)="close.emit()"
+              (click)="closed.emit()"
               class="p-1.5 text-text-muted hover:text-text-primary transition-colors rounded hover:bg-[#1E1E2E]"
               aria-label="Close article reader"
             >
-              <svg aria-hidden="true" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
+              <lucide-icon aria-hidden="true" [name]="X" size="16"></lucide-icon>
             </button>
           </div>
         </div>
@@ -58,11 +54,20 @@ import { ExtractedNewsArticle } from '../../services/api.service';
   `,
 })
 export class NewsArticleReaderPopupComponent {
+  readonly ExternalLink = ExternalLink;
+  readonly X = X;
+
   article = input.required<ExtractedNewsArticle>();
-  close = output<void>();
+  closed = output<void>();
 
   @HostListener('document:keydown.escape')
   onEscape() {
-    this.close.emit();
+    this.closed.emit();
+  }
+
+  onBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      this.closed.emit();
+    }
   }
 }

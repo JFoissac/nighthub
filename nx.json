@@ -40,8 +40,8 @@
   },
   "defaultProject": "nighthub",
   "workspaceLayout": {
-    "appsDir": ".",
-    "libsDir": "."
+    "appsDir": "apps",
+    "libsDir": "libs"
   },
   "defaultBase": "main",
   "plugins": []

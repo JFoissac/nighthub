@@ -4,6 +4,8 @@ import { MarketStore } from '../../stores/market.store';
 import { MarketTicker } from '../../models';
 import { ApiService } from '../../services/api.service';
 import { SparklineComponent } from './sparkline.component';
+import { SkeletonComponent } from '../skeleton/skeleton.component';
+import { EmptyStateComponent } from '../empty-state/empty-state.component';
 
 export interface MarketSentiment {
   fearGreed: { value: number; classification: string; source: string };
@@ -18,7 +20,7 @@ export interface MarketSentiment {
   selector: 'app-market-section',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, SparklineComponent],
+  imports: [CommonModule, SparklineComponent, SkeletonComponent, EmptyStateComponent],
   templateUrl: './market-section.component.html',
 })
 export class MarketSectionComponent implements OnInit, OnDestroy {

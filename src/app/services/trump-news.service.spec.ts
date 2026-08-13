@@ -26,7 +26,7 @@ describe('TrumpNewsService', () => {
       expect(items).toEqual(fakeNews as any);
     });
 
-    const req = httpMock.expectOne('http://localhost:3001/api/trump/news?limit=8');
+    const req = httpMock.expectOne('/api/trump/news?limit=8');
     expect(req.request.method).toBe('GET');
     req.flush(fakeNews);
   });
@@ -36,7 +36,7 @@ describe('TrumpNewsService', () => {
       expect(items).toEqual([]);
     });
 
-    const req = httpMock.expectOne('http://localhost:3001/api/trump/news?limit=5');
+    const req = httpMock.expectOne('/api/trump/news?limit=5');
     req.flush('boom', { status: 500, statusText: 'Server Error' });
   });
 });

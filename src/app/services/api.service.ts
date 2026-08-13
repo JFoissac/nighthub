@@ -1,6 +1,8 @@
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Observable, catchError, throwError } from 'rxjs';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../environments/environment';
+import type { UserPreferences } from '../models';
 
 export interface DashboardData {
   weather: any;
@@ -15,23 +17,6 @@ export interface DashboardData {
 export interface AuthStatus {
   youtube: boolean;
   twitch: boolean;
-}
-
-export interface UserPreferences {
-  weatherCity: string;
-  twitchFollows: string;
-  twitchUsername: string;
-  youtubeChannels: string;
-  youtubeChannelIds: string;
-  trumpMinCriticality: number;
-  customRssFeeds: string;
-  refreshInterval: number;
-  themeOledBlack: boolean;
-  marketRefreshInterval: number;
-  trumpRefreshInterval: number;
-  newsRefreshInterval: number;
-  streamsRefreshInterval: number;
-  youtubeRefreshInterval: number;
 }
 
 export interface YoutubeRemapHandleDiagnostic {
@@ -73,42 +58,26 @@ export interface ExtractedNewsArticle {
   url: string;
 }
 
+// Source unique de `UserPreferences` (définie dans models/index.ts).
+export type { UserPreferences };
+
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  constructor(private http: HttpClient) {}
-
-  private baseUrl = 'http://localhost:3001/api';
-  isLoading = false;
-  error: string | null = null;
-
-  private handleError = (error: HttpErrorResponse): Observable<never> => {
-    let errorMessage = 'An unknown error occurred';
-    if (error.error instanceof ErrorEvent) {
-      errorMessage = error.error.message;
-    } else {
-      errorMessage = `Error ${error.status}: ${error.message}`;
-    }
-    this.error = errorMessage;
-    return throwError(() => new Error(errorMessage));
-  };
+  private readonly http = inject(HttpClient);
+  private readonly apiUrl = environment.apiUrl;
+  private readonly origin = environment.origin;
 
   getHealth(): Observable<any> {
-    return this.http.get('http://localhost:3001/health').pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get(`${this.origin}/health`);
   }
 
   getDashboard(): Observable<DashboardData> {
-    this.isLoading = true;
-    this.error = null;
-    return this.http.get<DashboardData>(`${this.baseUrl}/dashboard`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<DashboardData>(`${this.apiUrl}/dashboard`);
   }
 
   getDashboardStream(onProgress: (step: string) => void): Observable<DashboardData> {
     return new Observable(subscriber => {
-      const es = new EventSource(`${this.baseUrl}/dashboard/stream`);
+      const es = new EventSource(`${this.apiUrl}/dashboard/stream`);
       // Server heartbeat is 4s and the timeout is re-armed on every
       // heartbeat/progress event, so 30s only fires when the stream is
       // genuinely stuck (e.g. server still booting). Was 5s, which failed
@@ -165,77 +134,53 @@ export class ApiService {
     });
   }
 
-  getTrumpTweets(limit: number = 20): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/trump?limit=${limit}`).pipe(
-      catchError(this.handleError)
-    );
+  getTrumpTweets(limit = 20): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/trump?limit=${limit}`);
   }
 
   getStreams(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/streams`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<any[]>(`${this.apiUrl}/streams`);
   }
 
   getFollows(username?: string): Observable<any[]> {
     const params = username ? `?username=${encodeURIComponent(username)}` : '';
-    return this.http.get<any[]>(`${this.baseUrl}/follows${params}`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<any[]>(`${this.apiUrl}/follows${params}`);
   }
 
-  getVideos(limit: number = 20): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/videos?limit=${limit}`).pipe(
-      catchError(this.handleError)
-    );
+  getVideos(limit = 20): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/videos?limit=${limit}`);
   }
 
-  getNews(limit: number = 20): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/news?limit=${limit}`).pipe(
-      catchError(this.handleError)
-    );
+  getNews(limit = 20): Observable<any[]> {
+    return this.http.get<any[]>(`${this.apiUrl}/news?limit=${limit}`);
   }
 
   getMarketData(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/market/live`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<any[]>(`${this.apiUrl}/market/live`);
   }
 
   getMarketSentiment(): Observable<any> {
-    return this.http.get<any>(`${this.baseUrl}/market/sentiment`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<any>(`${this.apiUrl}/market/sentiment`);
   }
 
   getMarketNews(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/market/news`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<any[]>(`${this.apiUrl}/market/news`);
   }
 
   extractNewsArticle(url: string): Observable<ExtractedNewsArticle> {
-    return this.http.post<ExtractedNewsArticle>(`${this.baseUrl}/news/extract`, { url }).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.post<ExtractedNewsArticle>(`${this.apiUrl}/news/extract`, { url });
   }
 
-  getWeather(city: string = 'Caen'): Observable<any> {
-    return this.http.get<any>(`${this.baseUrl}/weather?city=${encodeURIComponent(city)}`).pipe(
-      catchError(this.handleError)
-    );
+  getWeather(city = 'Caen'): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/weather?city=${encodeURIComponent(city)}`);
   }
 
   refreshAll(): Observable<any> {
-    return this.http.post(`${this.baseUrl}/refresh/all`, {}).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.post(`${this.apiUrl}/refresh/all`, {});
   }
 
   getAuthStatus(): Observable<AuthStatus> {
-    return this.http.get<AuthStatus>('http://localhost:3001/api/auth/status').pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<AuthStatus>(`${this.apiUrl}/auth/status`);
   }
 
   connectYouTube(): void {
@@ -244,7 +189,7 @@ export class ApiService {
     const left = (window.innerWidth - width) / 2;
     const top = (window.innerHeight - height) / 2;
     window.open(
-      'http://localhost:3001/api/auth/youtube',
+      `${this.apiUrl}/auth/youtube`,
       'YouTube OAuth',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
     );
@@ -256,81 +201,69 @@ export class ApiService {
     const left = (window.innerWidth - width) / 2;
     const top = (window.innerHeight - height) / 2;
     window.open(
-      'http://localhost:3001/api/auth/twitch',
+      `${this.apiUrl}/auth/twitch`,
       'Twitch OAuth',
       `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no`
     );
   }
 
   logout(provider: 'youtube' | 'twitch'): Observable<any> {
-    return this.http.post('http://localhost:3001/api/auth/logout', { provider }).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.post(`${this.apiUrl}/auth/logout`, { provider });
   }
 
   getPreferences(): Observable<UserPreferences> {
-    return this.http.get<UserPreferences>(`${this.baseUrl}/preferences`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<UserPreferences>(`${this.apiUrl}/preferences`);
   }
 
   savePreferences(prefs: Partial<UserPreferences>): Observable<any> {
-    return this.http.post(`${this.baseUrl}/preferences`, prefs).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.post(`${this.apiUrl}/preferences`, prefs);
   }
 
   importTwitchList(channels: string[]): Observable<{ imported: number; channels: string[]; invalid: string[] }> {
     return this.http.post<{ imported: number; channels: string[]; invalid: string[] }>(
-      `${this.baseUrl}/twitch/import-list`, { channels }
-    ).pipe(catchError(this.handleError));
+      `${this.apiUrl}/twitch/import-list`, { channels }
+    );
   }
 
   getTwitchPlayback(channel: string): Observable<{ auth?: string; sig?: string; expiresAt?: string; anonymous: boolean }> {
     return this.http.get<{ auth?: string; sig?: string; expiresAt?: string; anonymous: boolean }>(
-      `${this.baseUrl}/twitch/playback?channel=${encodeURIComponent(channel)}`
-    ).pipe(catchError(this.handleError));
+      `${this.apiUrl}/twitch/playback?channel=${encodeURIComponent(channel)}`
+    );
   }
 
   importYoutubeList(channels: string[]): Observable<{ imported: number; channels: string[] }> {
     return this.http.post<{ imported: number; channels: string[] }>(
-      `${this.baseUrl}/youtube/import-list`, { channels }
-    ).pipe(catchError(this.handleError));
+      `${this.apiUrl}/youtube/import-list`, { channels }
+    );
   }
 
   detectFeed(url: string): Observable<{ feedUrl: string }> {
-    return this.http.post<{ feedUrl: string }>(`${this.baseUrl}/sites/detect-feed`, { url }).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.post<{ feedUrl: string }>(`${this.apiUrl}/sites/detect-feed`, { url });
   }
 
   refreshNews(): Observable<any> {
-    return this.http.post(`${this.baseUrl}/refresh/news`, {}).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.post(`${this.apiUrl}/refresh/news`, {});
   }
 
   importYoutubeTakeout(channels: { channelId: string; title: string }[]): Observable<{ imported: number; total: number }> {
     return this.http.post<{ imported: number; total: number }>(
-      `${this.baseUrl}/youtube/import-takeout`, { channels }
-    ).pipe(catchError(this.handleError));
+      `${this.apiUrl}/youtube/import-takeout`, { channels }
+    );
   }
 
   getYoutubeRemapReport(): Observable<YoutubeRemapReport> {
-    return this.http.get<YoutubeRemapReport>(`${this.baseUrl}/youtube/remap/report`).pipe(
-      catchError(this.handleError)
-    );
+    return this.http.get<YoutubeRemapReport>(`${this.apiUrl}/youtube/remap/report`);
   }
 
   searchYoutubeChannels(query: string): Observable<{ query: string; candidates: YoutubeChannelCandidate[] }> {
     return this.http.get<{ query: string; candidates: YoutubeChannelCandidate[] }>(
-      `${this.baseUrl}/youtube/remap/search?q=${encodeURIComponent(query)}`
-    ).pipe(catchError(this.handleError));
+      `${this.apiUrl}/youtube/remap/search?q=${encodeURIComponent(query)}`
+    );
   }
 
   remapYoutubeChannel(handle: string, channelId: string): Observable<{ success: boolean; handle: string; channelId: string }> {
     return this.http.post<{ success: boolean; handle: string; channelId: string }>(
-      `${this.baseUrl}/youtube/remap`, { handle, channelId }
-    ).pipe(catchError(this.handleError));
+      `${this.apiUrl}/youtube/remap`, { handle, channelId }
+    );
   }
 }

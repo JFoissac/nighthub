@@ -1,13 +1,12 @@
 import { Component } from '@angular/core';
-import { RouterModule } from '@angular/router';
-import { DashboardComponent } from './pages/dashboard/dashboard.component';
+import { RouterOutlet } from '@angular/router';
 import { ToastContainerComponent } from './components/toast/toast-container.component';
 
 @Component({
-  imports: [RouterModule, DashboardComponent, ToastContainerComponent],
+  imports: [RouterOutlet, ToastContainerComponent],
   selector: 'app-root',
   template: `
-    <app-dashboard></app-dashboard>
+    <router-outlet></router-outlet>
     <app-toast-container></app-toast-container>
   `,
   styles: [`

@@ -24,7 +24,7 @@ export const MarketStore = signalStore(
 
   withProps(() => ({
     _api: inject(ApiService),
-    _timer: null as any,
+    _timer: null as ReturnType<typeof setInterval> | null,
   })),
 
   withComputed((store) => ({
@@ -94,7 +94,7 @@ export const MarketStore = signalStore(
           const ms = Math.max(5000, minutes * 60 * 1000);
           store._timer = setInterval(() => this.reload(), ms);
         },
-        error: () => {},
+        error: () => undefined,
       });
     },
 
