@@ -1,22 +1,21 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Output, ChangeDetectionStrategy } from '@angular/core';
+import { LucideAngularModule, X } from 'lucide-angular';
 
 @Component({
   selector: 'app-settings-modal',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" (click)="close.emit()"></div>
+      <div role="presentation" class="absolute inset-0 bg-black/60 backdrop-blur-sm" (click)="closed.emit()"></div>
 
       <div class="relative bg-surface border border-border rounded-2xl w-full max-w-xl shadow-2xl">
         <div class="px-6 py-4 border-b border-border flex items-center justify-between">
           <h2 class="font-headline text-xl font-bold text-text-primary">Configuration NightHub</h2>
-          <button (click)="close.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary" aria-label="Fermer">
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
+          <button (click)="closed.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary" aria-label="Fermer">
+            <lucide-icon [name]="X" size="20"></lucide-icon>
           </button>
         </div>
 
@@ -41,5 +40,7 @@ import { Component, EventEmitter, Output, ChangeDetectionStrategy } from '@angul
   `,
 })
 export class SettingsModalComponent {
-  @Output() close = new EventEmitter<void>();
+  readonly X = X;
+
+  @Output() closed = new EventEmitter<void>();
 }

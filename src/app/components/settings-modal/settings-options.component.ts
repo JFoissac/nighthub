@@ -1,14 +1,15 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, OnInit, Output, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule, X } from 'lucide-angular';
 import { ApiService, UserPreferences } from '../../services/api.service';
 
 @Component({
   selector: 'app-settings-options',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" (click)="onBackdropClick($event)">
+    <div role="presentation" class="fixed inset-0 z-50 flex items-center justify-center p-4" (click)="onBackdropClick($event)">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
 
       <div class="relative bg-surface border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl" role="dialog" aria-labelledby="options-title">
@@ -17,10 +18,8 @@ import { ApiService, UserPreferences } from '../../services/api.service';
             <span class="text-xl">⚙️</span>
             Configuration NightHub
           </h2>
-          <button (click)="close.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary" aria-label="Fermer">
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
+          <button (click)="closed.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary" aria-label="Fermer">
+            <lucide-icon [name]="X" size="20"></lucide-icon>
           </button>
         </div>
 
@@ -33,7 +32,7 @@ import { ApiService, UserPreferences } from '../../services/api.service';
 
             <div class="flex items-center justify-between gap-4">
               <div>
-                <label class="text-sm text-text-primary">OLED True Black</label>
+                <span class="text-sm text-text-primary">OLED True Black</span>
                 <p class="text-xs text-text-muted">Background #000000 for OLED screens</p>
               </div>
               <button
@@ -42,6 +41,7 @@ import { ApiService, UserPreferences } from '../../services/api.service';
                 [class.bg-primary]="themeOled"
                 [class.bg-[#1E1E2E]]="!themeOled"
                 role="switch"
+                aria-label="OLED True Black"
                 [attr.aria-checked]="themeOled"
               >
                 <span
@@ -59,8 +59,9 @@ import { ApiService, UserPreferences } from '../../services/api.service';
               <h3 class="font-headline font-semibold text-text-primary">Météo</h3>
             </div>
             <div class="space-y-2">
-              <label class="text-sm text-text-secondary">Ville</label>
+              <label for="weather-city" class="text-sm text-text-secondary">Ville</label>
               <input
+                id="weather-city"
                 type="text"
                 [(ngModel)]="prefs.weatherCity"
                 placeholder="Caen"
@@ -75,12 +76,13 @@ import { ApiService, UserPreferences } from '../../services/api.service';
               <h3 class="font-headline font-semibold text-text-primary">Trump Watch</h3>
             </div>
             <div class="space-y-2">
-              <label class="text-sm text-text-secondary">
+              <label for="trump-criticality" class="text-sm text-text-secondary">
                 Criticité minimum à afficher :
                 <span class="font-mono font-bold text-text-primary ml-1">{{ prefs.trumpMinCriticality }}</span>
                 <span class="text-xs ml-1">/ 10</span>
               </label>
               <input
+                id="trump-criticality"
                 type="range"
                 [(ngModel)]="prefs.trumpMinCriticality"
                 min="0"
@@ -105,10 +107,11 @@ import { ApiService, UserPreferences } from '../../services/api.service';
             @for (item of refreshItems(); track item.key) {
               <div class="space-y-1.5">
                 <div class="flex justify-between items-center">
-                  <label class="text-sm text-text-secondary">{{ item.label }}</label>
+                  <label [for]="'refresh-' + item.key" class="text-sm text-text-secondary">{{ item.label }}</label>
                   <span class="font-mono text-xs text-primary">{{ formatInterval(item.value) }}</span>
                 </div>
                 <input
+                  [id]="'refresh-' + item.key"
                   type="range"
                   [ngModel]="item.value"
                   (ngModelChange)="setRefreshInterval(item.key, $event)"
@@ -137,7 +140,7 @@ import { ApiService, UserPreferences } from '../../services/api.service';
             {{ isSaving() ? 'Sauvegarde...' : 'Sauvegarder' }}
           </button>
           <button
-            (click)="close.emit()"
+            (click)="closed.emit()"
             class="px-6 py-3 bg-background text-text-secondary rounded-lg font-medium hover:bg-border/50 transition-colors border border-border"
           >
             Annuler
@@ -148,7 +151,9 @@ import { ApiService, UserPreferences } from '../../services/api.service';
   `,
 })
 export class SettingsOptionsComponent implements OnInit {
-  @Output() close = new EventEmitter<void>();
+  readonly X = X;
+
+  @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<void>();
 
   private apiService = inject(ApiService);
@@ -203,7 +208,7 @@ export class SettingsOptionsComponent implements OnInit {
       next: () => {
         this.isSaving.set(false);
         this.saved.emit();
-        this.close.emit();
+        this.closed.emit();
       },
       error: () => {
         this.isSaving.set(false);
@@ -221,7 +226,7 @@ export class SettingsOptionsComponent implements OnInit {
 
   onBackdropClick(event: MouseEvent) {
     if ((event.target as HTMLElement).classList.contains('fixed')) {
-      this.close.emit();
+      this.closed.emit();
     }
   }
 }

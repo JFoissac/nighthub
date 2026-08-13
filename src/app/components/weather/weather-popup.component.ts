@@ -1,20 +1,20 @@
 import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, MapPin, X } from 'lucide-angular';
 import { WeatherForecast, WeatherDay } from '../../models';
 
 @Component({
   selector: 'app-weather-popup',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4"
-         (click)="close.emit()">
+    <div role="presentation" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-4"
+         (click)="onBackdropClick($event)">
 
       <!-- Modal -->
-      <div class="w-full max-w-2xl bg-[#12121A] border border-[#6366F1] shadow-[0_0_40px_rgba(99,102,241,0.2)] rounded overflow-hidden flex flex-col"
-           (click)="$event.stopPropagation()">
+      <div class="w-full max-w-2xl bg-[#12121A] border border-[#6366F1] shadow-[0_0_40px_rgba(99,102,241,0.2)] rounded overflow-hidden flex flex-col">
 
         <!-- Header -->
         <div class="border-b border-[#1E1E2E] px-md py-3 bg-[#12121A] flex justify-between items-start">
@@ -40,15 +40,15 @@ import { WeatherForecast, WeatherDay } from '../../models';
               }
             </div>
             <div class="flex items-center gap-1.5 text-text-muted">
-              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <lucide-icon [name]="MapPin" size="14"></lucide-icon>
               <span class="font-label-caps text-[10px]">{{ forecast()?.city || 'N/A' }}</span>
               @if (forecast()?.source === 'live') {
                 <span class="font-mono text-[9px] text-text-muted" data-testid="freshness-indicator">mis à jour</span>
               }
             </div>
           </div>
-          <button (click)="close.emit()" class="p-1 text-text-muted hover:text-text-primary transition-colors">
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <button (click)="closed.emit()" class="p-1 text-text-muted hover:text-text-primary transition-colors">
+            <lucide-icon [name]="X" size="20"></lucide-icon>
           </button>
         </div>
 
@@ -144,7 +144,7 @@ import { WeatherForecast, WeatherDay } from '../../models';
           <span class="font-mono text-[10px] text-text-muted uppercase">
             SOURCE: OPEN-METEO API
           </span>
-          <button (click)="close.emit()"
+          <button (click)="closed.emit()"
                   class="bg-[#6366F1] hover:bg-[#4f52d4] text-white font-label-caps text-[11px] px-5 py-1.5 rounded transition-all active:scale-95 shadow-[0_0_15px_rgba(99,102,241,0.3)]">
             CLOSE
           </button>
@@ -154,8 +154,17 @@ import { WeatherForecast, WeatherDay } from '../../models';
   `,
 })
 export class WeatherPopupComponent {
+  readonly MapPin = MapPin;
+  readonly X = X;
+
   forecast = input<WeatherForecast | null>(null);
-  close = output<void>();
+  closed = output<void>();
+
+  onBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      this.closed.emit();
+    }
+  }
 
   getIcon(day: WeatherDay): string {
     if (!day) return '🌤️';

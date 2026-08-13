@@ -162,4 +162,9 @@ export interface UserPreferences {
   customRssFeeds: string;
   refreshInterval: number;
   themeOledBlack: boolean;
+  marketRefreshInterval: number;
+  trumpRefreshInterval: number;
+  newsRefreshInterval: number;
+  streamsRefreshInterval: number;
+  youtubeRefreshInterval: number;
 }

@@ -1,26 +1,27 @@
 import { Component, input, output, signal, effect, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, Play } from 'lucide-angular';
 import { YoutubeVideo } from '../../models';
 
 @Component({
   selector: 'app-video-card',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     @if (video()) {
       <div class="flex gap-3 group border-b border-[#1E1E2E]/50 pb-3 last:border-0 last:pb-0 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
            role="button" tabindex="0"
-           (click)="select.emit(video()!)"
-           (keydown.enter)="select.emit(video()!)"
-           (keydown.space)="select.emit(video()!); $event.preventDefault()">
+           (click)="selected.emit(video()!)"
+           (keydown.enter)="selected.emit(video()!)"
+           (keydown.space)="selected.emit(video()!); $event.preventDefault()">
         <!-- Thumbnail -->
         <div class="relative w-32 h-[72px] bg-[#1E1E2E] rounded overflow-hidden flex-shrink-0 border border-[#1E1E2E] group-hover:border-primary transition-colors">
           <img [src]="video()!.thumbnailUrl" [alt]="video()!.title"
                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
           <!-- Play overlay -->
           <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
-            <svg class="w-8 h-8 text-white drop-shadow" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <lucide-icon [name]="Play" size="32" class="text-white drop-shadow"></lucide-icon>
           </div>
           @if (video()!.isNew) {
             <div class="absolute top-1 left-1 px-1 py-0.5 bg-primary text-[#0A0A0F] font-label-caps text-[10px] rounded">NEW</div>
@@ -48,8 +49,10 @@ import { YoutubeVideo } from '../../models';
   `,
 })
 export class VideoCardComponent {
+  readonly Play = Play;
+
   video = input<YoutubeVideo | null>(null);
-  select = output<YoutubeVideo>();
+  selected = output<YoutubeVideo>();
 
   cachedDate = signal('');
 

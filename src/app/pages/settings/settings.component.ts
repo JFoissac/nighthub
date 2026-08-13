@@ -2,21 +2,20 @@ import { Component, OnInit, signal, inject, ChangeDetectionStrategy } from '@ang
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { LucideAngularModule, ArrowLeft } from 'lucide-angular';
 import { ApiService, UserPreferences } from '../../services/api.service';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, LucideAngularModule],
   template: `
     <div class="min-h-screen bg-background p-6">
       <div class="max-w-2xl mx-auto">
         <div class="flex items-center gap-4 mb-8">
           <a routerLink="/" class="p-2 rounded-lg hover:bg-surface transition-colors">
-            <svg class="w-5 h-5 text-text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
+            <lucide-icon [name]="ArrowLeft" size="20" class="text-text-secondary"></lucide-icon>
           </a>
           <h1 class="font-headline text-2xl font-bold text-text-primary">Paramètres</h1>
         </div>
@@ -38,10 +37,11 @@ import { ApiService, UserPreferences } from '../../services/api.service';
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <span class="text-xl">🎮</span>
-                <label class="font-medium text-text-primary">Twitch — Chaînes à suivre</label>
+                <label for="twitch-follows" class="font-medium text-text-primary">Twitch — Chaînes à suivre</label>
               </div>
               <p class="text-xs text-text-secondary">Noms de chaînes séparés par des virgules. Le statut live est vérifié automatiquement.</p>
               <input
+                id="twitch-follows"
                 type="text"
                 [(ngModel)]="prefs.twitchFollows"
                 placeholder="ex: shroud, xqc, pokimane, kamet0"
@@ -60,10 +60,11 @@ import { ApiService, UserPreferences } from '../../services/api.service';
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <span class="text-xl">📺</span>
-                <label class="font-medium text-text-primary">YouTube — Chaînes à suivre</label>
+                <label for="youtube-channels" class="font-medium text-text-primary">YouTube — Chaînes à suivre</label>
               </div>
               <p class="text-xs text-text-secondary">Handles (@nom) séparés par des virgules. Les vidéos récentes sont récupérées via le flux RSS public.</p>
               <input
+                id="youtube-channels"
                 type="text"
                 [(ngModel)]="prefs.youtubeChannels"
                 placeholder="ex: @MrBeast, @Fireship, @t3dotgg"
@@ -82,9 +83,10 @@ import { ApiService, UserPreferences } from '../../services/api.service';
             <div class="space-y-2">
               <div class="flex items-center gap-2">
                 <span class="text-xl">🌤</span>
-                <label class="font-medium text-text-primary">Météo — Ville</label>
+                <label for="weather-city" class="font-medium text-text-primary">Météo — Ville</label>
               </div>
               <input
+                id="weather-city"
                 type="text"
                 [(ngModel)]="prefs.weatherCity"
                 placeholder="Caen"
@@ -128,6 +130,8 @@ import { ApiService, UserPreferences } from '../../services/api.service';
   `,
 })
 export class SettingsComponent implements OnInit {
+  readonly ArrowLeft = ArrowLeft;
+
   private apiService = inject(ApiService);
 
   isSaving = signal(false);
@@ -165,7 +169,7 @@ export class SettingsComponent implements OnInit {
         this.prefs = { ...this.prefs, ...p };
         this.updateLists();
       },
-      error: () => {}
+      error: () => undefined
     });
   }
 

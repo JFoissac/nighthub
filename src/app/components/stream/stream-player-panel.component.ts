@@ -1,6 +1,7 @@
 import { Component, input, output, inject, signal, effect, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { LucideAngularModule, ExternalLink, X } from 'lucide-angular';
 import { TwitchStream } from '../../models';
 import { ApiService } from '../../services/api.service';
 
@@ -8,7 +9,7 @@ import { ApiService } from '../../services/api.service';
   selector: 'app-stream-player-panel',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <div class="relative h-[calc(100vh-3rem)] flex" #wrapper>
       <!-- Resize handle — always visible, wide hit area -->
@@ -64,22 +65,16 @@ import { ApiService } from '../../services/api.service';
               class="flex items-center gap-1.5 px-2 py-1 bg-secondary/10 hover:bg-secondary/20 text-secondary rounded text-[9px] font-label-caps transition-colors border border-secondary/20"
               title="Ouvrir dans un onglet"
             >
-              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                <polyline points="15,3 21,3 21,9"/>
-                <line x1="10" y1="14" x2="21" y2="3"/>
-              </svg>
+              <lucide-icon [name]="ExternalLink" size="12"></lucide-icon>
               ONGLET
             </a>
             <!-- Close -->
             <button
-              (click)="close.emit()"
+              (click)="closed.emit()"
               class="p-1.5 rounded hover:bg-[#1E1E2E] transition-colors text-text-muted hover:text-text-primary"
               title="Fermer"
             >
-              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
-              </svg>
+              <lucide-icon [name]="X" size="16"></lucide-icon>
             </button>
           </div>
         </div>
@@ -109,8 +104,11 @@ import { ApiService } from '../../services/api.service';
   `,
 })
 export class StreamPlayerPanelComponent {
+  readonly ExternalLink = ExternalLink;
+  readonly X = X;
+
   stream = input.required<TwitchStream>();
-  close = output<void>();
+  closed = output<void>();
 
   private sanitizer = inject(DomSanitizer);
   private apiService = inject(ApiService);

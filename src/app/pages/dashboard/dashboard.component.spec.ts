@@ -13,10 +13,15 @@ import { MarketStore } from '../../stores/market.store';
 import { of, Subject } from 'rxjs';
 
 class MockIntersectionObserver {
-  constructor() {}
-  observe() {}
-  disconnect() {}
-  unobserve() {}
+  observe() {
+    return;
+  }
+  disconnect() {
+    return;
+  }
+  unobserve() {
+    return;
+  }
   root = null;
   rootMargin = '';
   thresholds = [];

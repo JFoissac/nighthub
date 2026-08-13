@@ -1,16 +1,17 @@
 import { Component, input, output, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
+import { LucideAngularModule, X } from 'lucide-angular';
 import { YoutubeVideo } from '../../models';
 
 @Component({
   selector: 'app-video-player-panel',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   template: `
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black/40 z-40" (click)="close.emit()"></div>
+    <div role="presentation" class="fixed inset-0 bg-black/40 z-40" (click)="closed.emit()"></div>
 
     <!-- Panel -->
     <div class="fixed top-0 right-0 h-full w-full md:w-[45%] lg:w-[40%] bg-[#0e0e13] border-l border-[#1E1E2E] z-50 flex flex-col shadow-2xl">
@@ -32,9 +33,9 @@ import { YoutubeVideo } from '../../models';
             <svg class="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814z"/><path fill="#fff" d="m9.545 15.568 6.273-3.568-6.273-3.568v7.136z"/></svg>
             YOUTUBE
           </a>
-          <button (click)="close.emit()"
+          <button (click)="closed.emit()"
                   class="p-1.5 rounded hover:bg-[#1E1E2E] transition-colors text-text-muted hover:text-text-primary">
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <lucide-icon [name]="X" size="16"></lucide-icon>
           </button>
         </div>
       </div>
@@ -61,8 +62,10 @@ import { YoutubeVideo } from '../../models';
   `,
 })
 export class VideoPlayerPanelComponent {
+  readonly X = X;
+
   video = input.required<YoutubeVideo>();
-  close = output<void>();
+  closed = output<void>();
 
   private sanitizer = inject(DomSanitizer);
 

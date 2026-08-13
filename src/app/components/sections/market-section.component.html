@@ -277,13 +277,13 @@
 
         <!-- ============ LOADING / ERROR ============ -->
         @if (store.isLoading() && !store.count()) {
-          <div class="text-center py-8"><span class="font-label-caps text-[9px] text-text-muted animate-pulse">LOADING...</span></div>
+          <div class="text-center py-8"><app-skeleton variant="text" /></div>
         }
         @if (!store.isLoading() && !store.count()) {
-          <div class="p-6 text-center">
-            <p class="font-label-caps text-[10px] text-text-muted mb-2">SERVICE UNAVAILABLE</p>
-            <p class="text-[10px] text-text-muted opacity-60">Market data feed is temporarily unavailable.</p>
-          </div>
+          <app-empty-state
+            title="SERVICE UNAVAILABLE"
+            description="Market data feed is temporarily unavailable."
+          ></app-empty-state>
         }
       </div>
     </section>

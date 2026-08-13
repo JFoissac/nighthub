@@ -1,12 +1,13 @@
 import { Component, input, output, signal, OnDestroy, OnInit, inject, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, RefreshCw, Monitor, Settings, SlidersHorizontal } from 'lucide-angular';
 import { ApiService } from '../../services/api.service';
 import { UserPreferences } from '../../models';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, LucideAngularModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <header class="fixed top-0 w-full z-50 flex justify-between items-center px-4 h-12 bg-[#0a0a14]/90 backdrop-blur-md border-b border-[#1E1E2E]">
@@ -51,17 +52,11 @@ import { UserPreferences } from '../../models';
           [attr.aria-busy]="isRefreshing()"
           aria-label="Refresh dashboard"
         >
-          @if (isRefreshing()) {
-            <svg class="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
-              <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
-            </svg>
-          } @else {
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
-              <path d="M21 3v6h-6"/>
-            </svg>
-          }
+          <lucide-icon
+            [name]="RefreshCw"
+            size="14"
+            [class]="isRefreshing() ? 'animate-spin' : ''"
+          ></lucide-icon>
           <span class="font-label-caps text-[10px]">
             @if (isRefreshing()) {
               REFRESHING
@@ -81,25 +76,17 @@ import { UserPreferences } from '../../models';
           [attr.aria-pressed]="isOled()"
           aria-label="Toggle OLED dark mode"
         >
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2"/>
-            <path d="M8 21h8M12 17v4"/>
-          </svg>
+          <lucide-icon [name]="Monitor" size="16"></lucide-icon>
         </button>
         <button (click)="openOptions.emit()"
                 class="p-2.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
                 aria-label="Options">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
+          <lucide-icon [name]="Settings" size="16"></lucide-icon>
         </button>
         <button (click)="openSources.emit()"
                 class="p-2.5 hover:bg-primary/10 text-text-muted hover:text-primary transition-all rounded"
                 aria-label="Sources">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2a7 7 0 0 0-7 7v3a4 4 0 0 0 4 4h1v-4H9a2 2 0 0 1-2-2V9a5 5 0 0 1 10 0v1a2 2 0 0 1-2 2h-1v4h1a4 4 0 0 0 4-4V9a7 7 0 0 0-7-7z"/>
-          </svg>
+          <lucide-icon [name]="SlidersHorizontal" size="16"></lucide-icon>
         </button>
       </div>
     </header>
@@ -127,6 +114,11 @@ export class HeaderComponent implements OnInit, OnDestroy {
   openWeather = output<void>();
   openStreamList = output<void>();
   openRefresh = output<void>();
+
+  readonly RefreshCw = RefreshCw;
+  readonly Monitor = Monitor;
+  readonly Settings = Settings;
+  readonly SlidersHorizontal = SlidersHorizontal;
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
 

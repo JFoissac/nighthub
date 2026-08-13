@@ -5,6 +5,7 @@ import {
   OnDestroy,
   output,
   input,
+  inject,
 } from '@angular/core';
 
 @Directive({
@@ -20,7 +21,7 @@ export class InfiniteScrollDirective implements OnInit, OnDestroy {
   private isTicking = false;
   private readonly bottomOffsetPx = 24;
 
-  constructor(private el: ElementRef<HTMLElement>) {}
+  private readonly el: ElementRef<HTMLElement> = inject(ElementRef);
 
   ngOnInit() {
     const scrollRoot = this.findScrollRoot(this.el.nativeElement);

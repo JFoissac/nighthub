@@ -11,9 +11,9 @@ import { TwitchStream } from '../../models';
     @if (stream()) {
       <div class="min-w-[220px] group cursor-pointer flex-shrink-0 snap-start focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"
            role="button" tabindex="0"
-           (click)="select.emit(stream()!)"
-           (keydown.enter)="select.emit(stream()!)"
-           (keydown.space)="select.emit(stream()!); $event.preventDefault()">
+           (click)="selected.emit(stream()!)"
+           (keydown.enter)="selected.emit(stream()!)"
+           (keydown.space)="selected.emit(stream()!); $event.preventDefault()">
         <div class="relative aspect-video rounded overflow-hidden mb-2 border border-[#1E1E2E] group-hover:border-primary transition-colors">
           <img [src]="stream()!.thumbnailUrl" [alt]="stream()!.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
           <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
@@ -35,7 +35,7 @@ import { TwitchStream } from '../../models';
 })
 export class StreamCardComponent {
   stream = input<TwitchStream | null>(null);
-  select = output<TwitchStream>();
+  selected = output<TwitchStream>();
 
   formatViewers(n: number): string {
     if (!n) return '0';

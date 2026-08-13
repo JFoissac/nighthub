@@ -1,14 +1,17 @@
 import { Component, output, inject, ElementRef, viewChild, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { LucideAngularModule, ChevronLeft, ChevronRight } from 'lucide-angular';
 import { TwitchStream } from '../../models';
 import { StreamsStore } from '../../stores/streams.store';
 import { StreamCardComponent } from '../stream/stream-card.component';
+import { SkeletonComponent } from '../skeleton/skeleton.component';
+import { EmptyStateComponent } from '../empty-state/empty-state.component';
 
 @Component({
   selector: 'app-streams-section',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, StreamCardComponent],
+  imports: [CommonModule, LucideAngularModule, StreamCardComponent, SkeletonComponent, EmptyStateComponent],
   template: `
     <section role="region" aria-label="Section des streams" class="mb-5 fade-in" style="animation-delay: 100ms">
       <div class="flex items-center justify-between mb-3">
@@ -22,13 +25,7 @@ import { StreamCardComponent } from '../stream/stream-card.component';
         </button>
       </div>
       @if (store.isLoading() && !store.count()) {
-        <div class="neo-glass rounded p-6 flex items-center gap-4">
-          <div class="flex-1 space-y-3">
-            <div class="h-3 w-28 rounded bg-[#1E1E2E]/60 animate-pulse"></div>
-            <div class="h-3 w-40 rounded bg-[#1E1E2E]/40 animate-pulse"></div>
-          </div>
-          <div class="h-8 w-24 rounded bg-[#1E1E2E]/50 animate-pulse"></div>
-        </div>
+        <app-skeleton variant="row" />
       } @else if (store.filteredStreams().length) {
         @if (store.gameList().length > 0) {
           <div class="flex gap-2 mb-3 overflow-x-auto scrollbar-hide">
@@ -61,7 +58,7 @@ import { StreamCardComponent } from '../stream/stream-card.component';
         <div class="relative group/scroll">
           <div class="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x-mandatory" #scrollContainer>
             @for (stream of store.filteredStreams(); track stream.twitchId || stream.id || $index) {
-              <app-stream-card [stream]="stream" (select)="selectStream.emit($event)"></app-stream-card>
+              <app-stream-card [stream]="stream" (selected)="selectStream.emit($event)"></app-stream-card>
             }
           </div>
           <button
@@ -69,26 +66,31 @@ import { StreamCardComponent } from '../stream/stream-card.component';
             class="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full neo-glass border border-[#1E1E2E] flex items-center justify-center text-text-muted hover:text-primary hover:border-primary transition-colors opacity-60 focus-within:opacity-100 group-hover/scroll:opacity-100"
             aria-label="Scroll left"
           >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <lucide-icon [name]="ChevronLeft" size="16"></lucide-icon>
           </button>
           <button
             (click)="scrollBy(320)"
             class="absolute right-0 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full neo-glass border border-[#1E1E2E] flex items-center justify-center text-text-muted hover:text-primary hover:border-primary transition-colors opacity-60 focus-within:opacity-100 group-hover/scroll:opacity-100"
             aria-label="Scroll right"
           >
-            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <lucide-icon [name]="ChevronRight" size="16"></lucide-icon>
           </button>
         </div>
       } @else {
-        <div class="neo-glass rounded p-6 flex items-center gap-4">
-          <p class="font-label-caps text-[10px] text-text-muted">NO STREAMS LIVE —</p>
-          <button (click)="openSettings.emit()" class="font-label-caps text-[10px] text-primary underline">CONFIGURE CHANNELS</button>
-        </div>
+        <app-empty-state
+          title="NO STREAMS LIVE —"
+          actionLabel="CONFIGURE CHANNELS"
+          layout="row"
+          (action)="openSettings.emit()"
+        ></app-empty-state>
       }
     </section>
   `,
 })
 export class StreamsSectionComponent {
+  readonly ChevronLeft = ChevronLeft;
+  readonly ChevronRight = ChevronRight;
+
   readonly store = inject(StreamsStore);
   readonly scrollContainer = viewChild<ElementRef<HTMLDivElement>>('scrollContainer');
 

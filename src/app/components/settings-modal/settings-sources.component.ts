@@ -1,14 +1,15 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, OnInit, Output, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { LucideAngularModule, X, Upload } from 'lucide-angular';
 import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreferences } from '../../services/api.service';
 
 @Component({
   selector: 'app-settings-sources',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LucideAngularModule],
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4" (click)="onBackdropClick($event)">
+    <div role="presentation" class="fixed inset-0 z-50 flex items-center justify-center p-4" (click)="onBackdropClick($event)">
       <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
 
       <div class="relative bg-surface border border-border rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl" role="dialog" aria-labelledby="sources-title">
@@ -17,10 +18,8 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
             <span class="text-xl">📡</span>
             Sources & Chaînes
           </h2>
-          <button (click)="close.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary" aria-label="Fermer">
-            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
-            </svg>
+          <button (click)="closed.emit()" class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary" aria-label="Fermer">
+            <lucide-icon [name]="X" size="20"></lucide-icon>
           </button>
         </div>
 
@@ -56,8 +55,9 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
               }
             </div>
             <div class="space-y-2">
-              <label class="text-sm text-text-secondary">Coller une liste de chaînes (une par ligne ou séparées par des virgules)</label>
+              <label for="twitch-paste-list" class="text-sm text-text-secondary">Coller une liste de chaînes (une par ligne ou séparées par des virgules)</label>
               <textarea
+                id="twitch-paste-list"
                 [(ngModel)]="twitchPasteList"
                 placeholder="kamet0&#10;squeezie&#10;gotaga&#10;zerator"
                 rows="3"
@@ -73,7 +73,7 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
             </div>
             @if (twitchList().length > 0) {
               <div class="space-y-1">
-                <label class="text-xs text-text-secondary">Chaînes suivies :</label>
+                <p class="text-xs text-text-secondary">Chaînes suivies :</p>
                 <div class="flex flex-wrap gap-1.5">
                   @for (ch of twitchList(); track ch) {
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-500/15 text-purple-300 rounded text-xs font-mono">
@@ -97,8 +97,9 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
               }
             </div>
             <div class="space-y-2">
-              <label class="text-sm text-text-secondary">Ajouter des chaînes YouTube (handles &#64;nom, une par ligne ou virgules)</label>
+              <label for="youtube-paste-list" class="text-sm text-text-secondary">Ajouter des chaînes YouTube (handles &#64;nom, une par ligne ou virgules)</label>
               <textarea
+                id="youtube-paste-list"
                 [(ngModel)]="youtubePasteList"
                 placeholder="&#64;MrBeast&#10;&#64;Fireship&#10;&#64;t3dotgg&#10;&#64;LexFridman"
                 rows="3"
@@ -114,11 +115,7 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
                 </button>
                 <label class="px-4 py-2 bg-amber-600/20 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-600/30 transition-colors border border-amber-600/30 cursor-pointer flex items-center gap-1.5"
                        title="Importer depuis Google Takeout (abonnements.csv)">
-                  <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="17,8 12,3 7,8"/>
-                    <line x1="12" y1="3" x2="12" y2="15"/>
-                  </svg>
+                  <lucide-icon [name]="Upload" size="14"></lucide-icon>
                   Google Takeout CSV
                   <input type="file" accept=".csv" class="hidden" (change)="onTakeoutFile($event)">
                 </label>
@@ -136,7 +133,7 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
 
             @if (youtubeList().length > 0) {
               <div class="space-y-1">
-                <label class="text-xs text-text-secondary">Chaînes suivies :</label>
+                <p class="text-xs text-text-secondary">Chaînes suivies :</p>
                 <div class="flex flex-wrap gap-1.5">
                   @for (ch of youtubeList(); track ch) {
                     <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-red-500/15 text-red-300 rounded text-xs font-mono">
@@ -155,8 +152,9 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
               <h3 class="font-headline font-semibold text-text-primary">Flux RSS personnalisés</h3>
             </div>
             <div class="space-y-2">
-              <label class="text-sm text-text-secondary">URLs de flux RSS à suivre (un par ligne)</label>
+              <label for="custom-rss-feeds" class="text-sm text-text-secondary">URLs de flux RSS à suivre (un par ligne)</label>
               <textarea
+                id="custom-rss-feeds"
                 [(ngModel)]="prefs.customRssFeeds"
                 placeholder="https://example.com/feed.xml&#10;https://blog.example.com/rss"
                 rows="3"
@@ -175,7 +173,7 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
             {{ isSaving() ? 'Sauvegarde...' : 'Sauvegarder' }}
           </button>
           <button
-            (click)="close.emit()"
+            (click)="closed.emit()"
             class="px-6 py-3 bg-background text-text-secondary rounded-lg font-medium hover:bg-border/50 transition-colors border border-border"
           >
             Annuler
@@ -184,7 +182,7 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
       </div>
 
       @if (showYoutubeRemapAdmin()) {
-        <div class="absolute inset-0 z-20 flex items-center justify-center p-4" (click)="onAdminBackdropClick($event)">
+        <div role="presentation" class="absolute inset-0 z-20 flex items-center justify-center p-4" (click)="onAdminBackdropClick($event)">
           <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
           <div class="relative w-full max-w-4xl max-h-[85vh] overflow-y-auto bg-surface border border-border rounded-2xl shadow-2xl">
             <div class="sticky top-0 z-10 bg-surface border-b border-border px-5 py-3 flex items-center justify-between">
@@ -194,9 +192,7 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
                 class="p-2 rounded-lg hover:bg-background transition-colors text-text-secondary hover:text-text-primary"
                 aria-label="Fermer"
               >
-                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 6L6 18M6 6l12 12"/>
-                </svg>
+                <lucide-icon [name]="X" size="20"></lucide-icon>
               </button>
             </div>
 
@@ -334,7 +330,10 @@ import { ApiService, YoutubeChannelCandidate, YoutubeRemapReport, UserPreference
   `,
 })
 export class SettingsSourcesComponent implements OnInit {
-  @Output() close = new EventEmitter<void>();
+  readonly X = X;
+  readonly Upload = Upload;
+
+  @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<void>();
 
   private apiService = inject(ApiService);
@@ -585,7 +584,7 @@ export class SettingsSourcesComponent implements OnInit {
       next: () => {
         this.isSaving.set(false);
         this.saved.emit();
-        this.close.emit();
+        this.closed.emit();
       },
       error: () => {
         this.isSaving.set(false);
@@ -595,7 +594,7 @@ export class SettingsSourcesComponent implements OnInit {
 
   onBackdropClick(event: MouseEvent) {
     if ((event.target as HTMLElement).classList.contains('fixed')) {
-      this.close.emit();
+      this.closed.emit();
     }
   }
 

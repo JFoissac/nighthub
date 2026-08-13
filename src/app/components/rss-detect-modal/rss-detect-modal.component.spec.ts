@@ -43,7 +43,7 @@ describe('RssDetectModalComponent', () => {
   it('should emit close when close button is clicked', () => {
     fixture.detectChanges();
     const emitted: void[] = [];
-    component.close.subscribe(() => emitted.push(undefined));
+    component.closed.subscribe(() => emitted.push(undefined));
 
     const closeButton = fixture.nativeElement.querySelector('button');
     closeButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -77,7 +77,7 @@ describe('RssDetectModalComponent', () => {
   it('should close on backdrop click', () => {
     fixture.detectChanges();
     const emitted: void[] = [];
-    component.close.subscribe(() => emitted.push(undefined));
+    component.closed.subscribe(() => emitted.push(undefined));
 
     const backdrop = fixture.nativeElement.querySelector('.fixed');
     backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -88,7 +88,7 @@ describe('RssDetectModalComponent', () => {
   it('should not close when clicking inside modal content', () => {
     fixture.detectChanges();
     const emitted: void[] = [];
-    component.close.subscribe(() => emitted.push(undefined));
+    component.closed.subscribe(() => emitted.push(undefined));
 
     const modalContent = fixture.nativeElement.querySelector('.relative');
     modalContent.dispatchEvent(new MouseEvent('click', { bubbles: true }));
