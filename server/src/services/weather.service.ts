@@ -141,6 +141,10 @@ export class WeatherService {
   }
 
   private async getCachedOrError(city: string, errorMessage: string): Promise<any> {
+    // 1) Cache mémoire même périmé : le dernier bon résultat connu vaut mieux
+    // qu'une erreur (panne réseau transitoire → l'UI garde la météo affichée).
+    if (this.cache) return this.cache.data;
+    // 2) Cache DB
     const cached = await this.getCachedWeeklyForecast(city);
     if (cached) return cached;
     return {
