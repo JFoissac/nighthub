@@ -1,6 +1,7 @@
 import { prisma } from '../db/prisma.client';
 import { logger } from '../utils/logger';
 import { TIMEOUTS, CACHE_TTL } from '../config/constants';
+import { config } from '../config/env';
 
 const TWITCH_GQL = 'https://gql.twitch.tv/gql';
 // Twitch's own web client-id (public, used by twitch.tv website)
@@ -44,7 +45,8 @@ export class TwitchService {
   }
 
   private async fetchUsersByLogins(logins: string[]): Promise<any[]> {
-    const data = await gql(`
+    try {
+      const data = await gql(`
       query GetStreams($logins: [String!]!) {
         users(logins: $logins) {
           id login displayName
@@ -58,7 +60,87 @@ export class TwitchService {
         }
       }
     `, { logins });
-    return data?.data?.users || [];
+      return data?.data?.users || [];
+    } catch (e) {
+      // GQL bloqué (filtre DNS/VPN, rate-limit…) → API officielle Helix
+      logger.warn('[Twitch] GQL échoué, fallback Helix', { errorName: (e as any)?.name, errorMessage: (e as any)?.message });
+      return this.fetchLiveStreamsHelix(logins);
+    }
+  }
+
+  /** Jeton d'app Twitch (client credentials) pour l'API Helix officielle. */
+  private helixTokenCache: { token: string; expiresAt: number } | null = null;
+
+  private async helixAppToken(): Promise<string> {
+    if (this.helixTokenCache && this.helixTokenCache.expiresAt > Date.now() + 60_000) {
+      return this.helixTokenCache.token;
+    }
+    if (!config.twitch.clientId || !config.twitch.clientSecret) {
+      throw new Error('TWITCH_CLIENT_ID/SECRET manquants');
+    }
+    const body = new URLSearchParams({
+      client_id: config.twitch.clientId,
+      client_secret: config.twitch.clientSecret,
+      grant_type: 'client_credentials',
+    });
+    const res = await fetch('https://id.twitch.tv/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Helix token HTTP ${res.status}`);
+    const data = (await res.json()) as any;
+    this.helixTokenCache = {
+      token: data.access_token,
+      expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+    };
+    return data.access_token;
+  }
+
+  /** Fallback : streams en direct via l'API officielle Helix (api.twitch.tv, non bloquée). */
+  private async fetchLiveStreamsHelix(logins: string[]): Promise<any[]> {
+    const token = await this.helixAppToken();
+    const headers = { Authorization: `Bearer ${token}`, 'Client-Id': config.twitch.clientId };
+    const qs = logins.map((l) => `user_login=${encodeURIComponent(l)}`).join('&');
+    const res = await fetch(`https://api.twitch.tv/helix/streams?${qs}`, {
+      headers,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) throw new Error(`Helix streams HTTP ${res.status}`);
+    const body = (await res.json()) as any;
+    const streams = (body?.data || []) as any[];
+
+    // Avatars (batch users)
+    let avatarByLogin: Record<string, string> = {};
+    try {
+      const uqs = logins.map((l) => `login=${encodeURIComponent(l)}`).join('&');
+      const ures = await fetch(`https://api.twitch.tv/helix/users?${uqs}`, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (ures.ok) {
+        const ubody = (await ures.json()) as any;
+        for (const u of ubody?.data || []) avatarByLogin[(u.login || '').toLowerCase()] = u.profile_image_url;
+      }
+    } catch {
+      // avatars optionnels
+    }
+
+    return streams.map((s: any) => ({
+      id: s.id,
+      login: s.user_login,
+      displayName: s.user_name,
+      profileImageURL: avatarByLogin[(s.user_login || '').toLowerCase()] || '',
+      stream: {
+        id: s.id,
+        title: s.title,
+        viewersCount: s.viewer_count,
+        previewImageURL: (s.thumbnail_url || '').replace('{width}', '320').replace('{height}', '180'),
+        game: s.game_name ? { name: s.game_name } : null,
+        createdAt: s.started_at,
+      },
+    }));
   }
 
   /** Get followed channels config from DB preferences */
