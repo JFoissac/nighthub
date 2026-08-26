@@ -70,3 +70,4 @@ server/.env
 
 # Snapshots runtime (regeneres au boot)
 server/data/dashboard-snapshot.json
+server/data/market-snapshot.json

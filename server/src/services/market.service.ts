@@ -1,5 +1,7 @@
 import { logger } from '../utils/logger';
 import { TRACKED_STOCKS } from './market.catalog';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface MarketTicker {
   symbol: string;
@@ -39,6 +41,47 @@ export class MarketService {
   private cache: { data: MarketTicker[]; fetchedAt: number } | null = null;
   private fetchInFlight: Promise<MarketTicker[]> | null = null;
 
+  /** Snapshot marché persistant (même pattern que le snapshot dashboard) :
+   *  rechargé au boot et réécrit après chaque fetch réussi, pour que le
+   *  ticker ne soit jamais vide pendant les pannes transitoires de cotation. */
+  static readonly SNAPSHOT_FILE = path.join(process.cwd(), 'data', 'market-snapshot.json');
+
+  constructor() {
+    this.loadPersistedSnapshot();
+  }
+
+  /** Recharge le dernier snapshot marché depuis le disque (survit aux redémarrages). */
+  private loadPersistedSnapshot(): void {
+    if (process.env.NODE_ENV === 'test') return; // jamais d'I/O disque dans les tests
+    try {
+      if (!fs.existsSync(MarketService.SNAPSHOT_FILE)) return;
+      const raw = fs.readFileSync(MarketService.SNAPSHOT_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.data) && parsed.data.length > 0 && typeof parsed.fetchedAt === 'number') {
+        this.cache = { data: parsed.data, fetchedAt: parsed.fetchedAt };
+        logger.info('Market snapshot loaded from disk', {
+          items: parsed.data.length,
+          ageMin: Math.round((Date.now() - parsed.fetchedAt) / 60000),
+        });
+      }
+    } catch (err) {
+      logger.warn('Failed to load market snapshot', { error: (err as Error).message });
+    }
+  }
+
+  /** Persiste le snapshot marché après un fetch réussi (stale-while-error au boot). */
+  private persistSnapshot(data: MarketTicker[]): void {
+    if (process.env.NODE_ENV === 'test') return; // jamais d'écriture disque dans les tests
+    if (!data.length) return;
+    try {
+      const dir = path.dirname(MarketService.SNAPSHOT_FILE);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(MarketService.SNAPSHOT_FILE, JSON.stringify({ data, fetchedAt: Date.now() }));
+    } catch (err) {
+      logger.warn('Failed to persist market snapshot', { error: (err as Error).message });
+    }
+  }
+
   async getLiveMarketData(): Promise<MarketTicker[]> {
     // Fast path: fresh in-memory cache
     if (this.cache && Date.now() - this.cache.fetchedAt < MARKET_CACHE_TTL_MS) {
@@ -69,6 +112,7 @@ export class MarketService {
       fetched = data;
       if (data.length > 0) {
         this.cache = { data, fetchedAt: Date.now() };
+        this.persistSnapshot(data);
       }
       return data;
     });
