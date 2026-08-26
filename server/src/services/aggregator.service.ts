@@ -317,7 +317,11 @@ export class AggregatorService {
       const [weather, streams, videos, news, trump, youtubeLives, market] = await Promise.allSettled([
         source(this.deps.weatherService.getWeeklyForecast(weatherCity)),
         source(this.deps.twitchService.getLiveStreamsFast(20)),
-        source(this.deps.youtubeService.getLatestVideos(20)),
+        // 20 → 100 : le cache DB contient ~73 vidéos / 7 j, le dashboard ne
+        // servait que les 20 plus récentes (limite arbitraire). LifeHub fait
+        // son propre lazy-loading (6→+6 au scroll) ; on lui renvoie tout le
+        // cache 7 j pour qu'il puisse tout afficher au scroll.
+        source(this.deps.youtubeService.getLatestVideos(100)),
         source(this.deps.newsService.getCachedNews(20)),
         source(this.deps.trumpService.getCachedTrumpTweets(20)),
         source(this.deps.youtubeService.getCachedLiveStreams(10)),
