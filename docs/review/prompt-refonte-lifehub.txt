@@ -1,0 +1,37 @@
+REFONTE GRAPHIQUE — NIGHTHUB V2 = DÉBUT DE POC LIFEHUB (page unique réagençée)
+
+CONTEXTE
+Tu travailles sur Nighthub : dashboard perso Angular 21 (Nx, signals, Tailwind) + backend Express/Prisma (port 3001), front sur 4201. Aujourd'hui : thème sombre type terminal, grille 2 colonnes. C'est une refonte VISUELLE + UX qui sert de POC au futur LifeHub (qui intégrera à terme TOUTES les apps perso de l'utilisateur : crypto-dashboard, mediahub, etc.). Le backend et les sources de données ne changent pas (sauf ajout minimal si besoin).
+
+PRINCIPE FONDAMENTAL
+TOUS les blocs restent sur la MÊME page (scroll vertical), mais tout est RÉAGENCÉ et regroupé par onglets. Pas de navigation qui cache des sections : on voit tout en scrollant, avec des regroupements intelligents.
+
+BRANCHE DÉDIÉE (IMPORTANT)
+Crée une nouvelle branche git dédiée à cette refonte, ex. feat/redesign-lifehub, à partir de l'état actuel du travail. Toute la refonte se fait sur cette branche, avec des commits réguliers et propres. Cette branche servira plus tard à fusionner Nighthub dans LifeHub, donc structure propre et design system documenté.
+
+RÉFÉRENCES VISUELLES À RESPECTER
+1. Rendu LifeHub (cible principale) :
+   - C:\Bureau\Dev\LifeHub\docs\DESIGN.md (spec design : couleurs, typo, composants)
+   - C:\Bureau\Dev\LifeHub\docs\design-dashboard-energie.png (mockup du dashboard)
+2. Crypto dashboard (densité, composants marché) : C:\Bureau\Dev\crypto-dashboard (frontend/ + backend/)
+3. Rendu ACTUEL de Nighthub (ce qu'on remplace) : C:\Users\Donwar\AppData\Local\hermes\cache\screenshots\browser_screenshot_2572a48bc2744d9aa0c0435439919ebb.png
+
+RÉAGENCEMENT DEMANDÉ
+1. BANDEAU MARCHÉS DÉFILANT (top de page) : les marchés live deviennent un bandeau horizontal défilant type « bandeau live market » (ticker défilant : ticker, prix, variation colorée). 
+2. MENU SIDEBAR DÉTAILS MARCHÉS : ouvrir les détails (graphiques, groupes de tickers, news marché, sentiment) via un panneau latéral (sidebar) qui intégrera à terme crypto-dashboard — ce panneau se déplie à la demande, il ne remplace pas la page.
+3. BLOC « LIVE » (onglets) : Live streams ET YouTube dans le MÊME bloc, avec onglets pour basculer (onglet 1 = Live streams, onglet 2 = YouTube).
+4. BLOC « VEILLE IA » (onglets) : AI Blog ET Trump Watch dans le MÊME bloc, avec onglets. AI Blog devient un FLUX RSS (liste de flux type lecteur RSS, compact) — il sera retravaillé plus tard.
+5. Autres sections (météo, etc.) : conservées sur la page, réagencées proprement sous les blocs ci-dessus.
+6. STYLE : thème clair (fond gris clair/bleuté comme le rendu LifeHub), cartes blanches à ombres douces, coins arrondis, ÉLÉMENTS PLUS PETITS (densité dashboard pro, typo fine, marges réduites), accents de couleur conservés si cohérents. Unifier les 3 sources de couleurs (tailwind.config / :root / hex inline) en un seul design system.
+7. REFRESH INDÉPENDANT PAR PARTIE : chaque bloc/carte a son propre bouton refresh + son propre état chargement/erreur/vide. Rafraîchir les marchés ne doit pas recharger YouTube ni le reste. Utiliser les endpoints /api/refresh/* existants ; ajouter côté backend uniquement ce qui manque (minimal, propre).
+8. NE PAS RÉGRESSER : accessibilité (tabindex/roles, prefers-reduced-motion), perfs, données réelles (zéro donnée en dur). Garder le composant sparkline Chart.js existant.
+
+VALIDATIONS OBLIGATOIRES AVANT DE TERMINER
+- Build front sans erreur (npx nx build, ou npx nx serve sans erreur de compilation)
+- Tests front : npx jest — les 194 tests existants doivent tous passer (corriger les specs cassés, NE PAS en écrire de nouveaux)
+- Backend : cd server && npm run typecheck && npm test
+- Vérification visuelle sur http://localhost:4201 (backend :3001 lancé) : le rendu doit être proche des références LifeHub/crypto-dashboard
+
+CONTRAINTES
+- Réponds en français. Affiche ta todo, fais des commits fréquents et propres.
+- Termine par un récap : ce qui a été fait, ce qui reste, et les choix de design system retenus (couleurs/typo) pour la future fusion LifeHub.

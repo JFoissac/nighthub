@@ -105,7 +105,7 @@ Règle du porteur : **1 feature = 1 commit + push + docs à jour** ; le backend 
 
 ## 9. Liens
 - Plan en cours : `PLAN.md` (racine) — état détaillé et chantier « chargement au lancement »
-- Décisions : `docs/adr/` **n'existe pas encore** ; les décisions de refonte sont dans `docs/review/` et `docs/DASHBOARD_GOAL.md`
+- Décisions : `docs/decisions/` **n'existe pas encore** ; les décisions de refonte sont dans `docs/review/` et `docs/DASHBOARD_GOAL.md`
 - Runbook : `<repo>/docs/RUNBOOK.md` **à créer** — démarrage/arrêt décrits ci-dessus et dans `README.md`
 - Doc fonctionnelle : `PROJECT-DOC.md` · design : `docs/design-system/`
 - Dépôt : https://github.com/JFoissac/nighthub
