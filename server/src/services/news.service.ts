@@ -463,6 +463,20 @@ private async cacheNews(items: any[]): Promise<void> {
 
   async detectFeed(siteUrl: string): Promise<string | null> {
     try {
+      // Correctif 05/10/2026 (audit) — SSRF : detectFeed fetchait une URL ARBITRAIRE fournie par
+      // l'appelant SANS le garde-fou anti-IP-privee qu'utilise /news/extract, alors qu'il est exposé
+      // par POST /api/sites/detect-feed. Un appelant pouvait donc faire lire au serveur une adresse
+      // interne (localhost, 169.254.169.254, réseau local). Même contrôle que l'extraction.
+      let cible: URL;
+      try {
+        cible = new URL(siteUrl);
+      } catch {
+        return null;
+      }
+      if (!(await this.isAllowedExtractionUrl(cible))) {
+        console.warn(`[news] detectFeed refuse une adresse interne ou invalide : ${cible.hostname}`);
+        return null;
+      }
       const res = await fetch(siteUrl, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(8000) });
       if (res.ok) {
         const html = await res.text();

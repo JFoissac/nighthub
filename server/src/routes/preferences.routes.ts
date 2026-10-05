@@ -6,6 +6,11 @@ import { validateBody } from './route.utils';
 
 const router = Router();
 
+// Correctif 05/10/2026 (audit) — le schéma ne déclarait que `refreshInterval`, alors que le modèle
+// Prisma porte 5 fréquences distinctes (market/trump/news/streams/youtube). Un `z.object()` SUPPRIME les
+// clés non déclarées : ces 5 préférences n'étaient donc ni enregistrables ni renvoyées — l'utilisateur
+// pouvait les régler dans l'interface sans que rien ne soit conservé.
+const FRAICHEUR = z.number().int().min(5).max(1440).optional();
 const preferencesSchema = z.object({
   weatherCity: z.string().optional(),
   twitchFollows: z.string().optional(),
@@ -16,6 +21,11 @@ const preferencesSchema = z.object({
   customRssFeeds: z.string().optional(),
   refreshInterval: z.number().optional(),
   themeOledBlack: z.boolean().optional(),
+  marketRefreshInterval: FRAICHEUR,
+  trumpRefreshInterval: FRAICHEUR,
+  newsRefreshInterval: FRAICHEUR,
+  streamsRefreshInterval: FRAICHEUR,
+  youtubeRefreshInterval: FRAICHEUR,
 });
 
 async function getPreferences(_req: Request, res: Response) {
@@ -34,6 +44,12 @@ async function getPreferences(_req: Request, res: Response) {
       customRssFeeds: pref.customRssFeeds,
       refreshInterval: pref.refreshInterval,
       themeOledBlack: pref.themeOledBlack,
+      // les 5 fréquences par domaine étaient omises de la réponse (correctif 05/10/2026)
+      marketRefreshInterval: pref.marketRefreshInterval,
+      trumpRefreshInterval: pref.trumpRefreshInterval,
+      newsRefreshInterval: pref.newsRefreshInterval,
+      streamsRefreshInterval: pref.streamsRefreshInterval,
+      youtubeRefreshInterval: pref.youtubeRefreshInterval,
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch preferences' });
@@ -65,6 +81,12 @@ async function savePreferences(req: Request, res: Response) {
     if (typeof body.customRssFeeds === 'string') data.customRssFeeds = body.customRssFeeds.substring(0, 10000);
     if (typeof body.refreshInterval === 'number') data.refreshInterval = Math.max(5, Math.min(60, body.refreshInterval));
     if (typeof body.themeOledBlack === 'boolean') data.themeOledBlack = body.themeOledBlack;
+    // Les 5 fréquences par domaine : bornées des deux côtés (le schéma valide 5..1440 en amont).
+    for (const cle of ['marketRefreshInterval', 'trumpRefreshInterval', 'newsRefreshInterval',
+      'streamsRefreshInterval', 'youtubeRefreshInterval'] as const) {
+      const v = (body as Record<string, unknown>)[cle];
+      if (typeof v === 'number') data[cle] = Math.max(5, Math.min(1440, v));
+    }
 
     const existing = await prisma.userPreference.findFirst();
     if (existing) {
