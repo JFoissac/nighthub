@@ -23,6 +23,21 @@ last_reviewed: 2026-09-19
 NightHub est le tableau de bord nocturne de JF : une seule page qui rassemble les streams Twitch en direct des chaînes suivies, les dernières vidéos YouTube, la timeline X/Twitter, les posts de Trump scorés (criticité 0-10) avec une veille presse associée, les news IA, la météo de la semaine et les marchés (crypto et actions par groupes de tickers, avec sparklines et un indice de sentiment). Aucune donnée n'est codée en dur : tout vient de flux (RSS/GQL/scraping) ou des préférences de l'utilisateur.
 
 ## 2. État actuel
+- **Corrigé le 2026-10-05 (audit complet des 23 apps du porteur)** — deux défauts d'API traités :
+  1. **SSRF** : `detectFeed()` (`POST /api/sites/detect-feed`) lisait une URL d'appelant sans le
+     garde-fou anti-IP-privée utilisé par `/news/extract` → une adresse interne était lisible par le
+     serveur. Corrigé ; **vérifié en service** : URL interne refusée en **28 ms** (aucune requête émise,
+     refus journalisé), URL légitime toujours acceptée (`lemonde.fr` → 200 + `une.xml`).
+  2. **5 fréquences de rafraîchissement jetées** : le schéma Zod ne déclarait que `refreshInterval`, donc
+     `market/trump/news/streams/youtubeRefreshInterval` n'étaient ni enregistrables ni renvoyées. Après
+     correctif, `GET /api/preferences` renvoie **5 / 210 / 160 / 10 / 60** — des valeurs réelles,
+     différentes des défauts du modèle : elles existaient en base et l'API les ignorait.
+     → `docs/bugs/2026-10-05-ssrf-detect-feed-et-frequences-perdues.md`
+  Backend relancé (console cachée), `/health` → 200 ; `tsc` propre ; tests serveur **246/246**.
+  **En attente de ta décision** : la rotation des clés Twitter/OpenWeatherMap et la purge de
+  `server/.env` de l'historique (valeurs réelles) — la purge force-push un dépôt **public**, donc je ne
+  la lance pas sans ton accord ; et le durcissement de l'API (aujourd'hui sans authentification sur
+  `0.0.0.0`, exposition LAN).
 - **Marche** : backend sur :3001 vérifié vivant le 19/09 (`/health` 200, `/api/dashboard` 200) ; front sur :4201 servi (200 en IPv6) ; 246/246 tests backend et 194/194 tests front verts ; cron actifs ; démarrage auto Windows en place (`HKCU\Run` → `nighthub-start.vbs`). Dernier commit : *2026-08-26 « fix(youtube): sert tout le cache 7j de videos au dashboard (limite 20 -> 100) »*.
 - **En chantier** : branche `feat/evo`. Le module Énergie (Conso API/Linky) **n'existe plus dans le code** (ni `energy.*.ts` côté serveur ni route) : il a été stoppé et retiré — à ne pas confondre avec une fonctionnalité en place. Restent non commités : `server/data/trump-trained-profile.json` (snapshot réentraîné) et des fichiers non suivis (`.freebuff/`, `docs/review/crypto-dashboard-reference.png`, `docs/review/prompt-refonte-lifehub.txt`).
 - **À VENIR** : chantier annoncé dans `PLAN.md` — **chargement des données au lancement** (dashboard quasi instantané au boot, stale-while-revalidate) ; P1/P2 du diagnostic UI/UX non traités (unifier les 3 sources de couleurs — tokens Tailwind vs `:root` vs hex inline, unités 24 h incohérentes entre crypto et actions, `lg:col-span-5/7` inertes, focus trap des modales) ; badge « DÉMO » si la source l'est, sinon LIVE.

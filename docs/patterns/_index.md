@@ -2,7 +2,7 @@
 titre: Nighthub — Patterns
 projet: Nighthub
 type: index
-last_reviewed: 2026-09-19
+last_reviewed: 2026-10-05
 ---
 
 # Patterns — Nighthub
